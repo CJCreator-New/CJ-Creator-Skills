@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import forge_lib as F  # noqa: E402
+import dash_server as D  # noqa: E402
 import render_dashboard as R  # noqa: E402
 import tui  # noqa: E402
 
@@ -184,7 +185,7 @@ def build_ticket(root, d, rt):
         "complexity": cx, "model": "opus" if cx == "complex" else "sonnet",
         "tests_later": d.get("tests_later", []), "est": est, "status": "pending",
         "actual": None, "lines": {"added": 0, "removed": 0}, "closing": [], "shortcuts": [],
-        "touched": [], "gap": "", "summary": "",
+        "touched": [], "gap": "", "summary": "", "started": None, "finished": None, "details": [],
     }
 
 
@@ -298,6 +299,9 @@ def cmd_approve(a):
     print("approved. test mode: %s" % F.load(root)["test_mode"])
     for w in warn:
         print("WARNING:", w)
+    if not os.environ.get("FORGE_NO_DASHBOARD"):
+        url = D.open_for(root)
+        print("dashboard: %s (opened)" % url if url else "dashboard server did not start; static view: .claude/forge/dashboard.html")
 
 
 def cmd_drop(a):
@@ -324,16 +328,34 @@ def cmd_ready(a):
     if a.phase:
         pid = "P%s" % a.phase if a.phase.isdigit() else a.phase
         cand = [t for t in cand if t["phase"] == pid]
-    batch, deferred, used = [], [], set()
+    # Files held by running agents are busy: a new batch must not touch them, so agents can share one working tree.
+    used = set()
+    for t in T.values():
+        if t["status"] == "running":
+            used |= files_of(t)
+    batch, deferred = [], []
     for t in cand:
-        files = set(t["edit"] + t["create"])
+        files = files_of(t)
         if files & used:
             deferred.append(t["id"])
         else:
             batch.append(t["id"])
             used |= files
-    dump({"batch": batch, "deferred": deferred, "worktree": len(batch) > 1,
-          "models": {i: T[i]["model"] for i in batch}})
+    dump({"batch": batch, "deferred": deferred, "models": {i: T[i]["model"] for i in batch}})
+
+
+def files_of(t):
+    return {F.norm_rel(F.spec_path(s)) for s in t["edit"] + t["create"]}
+
+
+def stamp_leg(t, status):
+    """Record when a relay leg started and finished, for the terminal relay view."""
+    if status == "running":
+        t["started"] = t.get("started") or F.now()
+    elif status in ("done", "blocked"):
+        t["finished"] = F.now()
+    elif status in ("pending", "approved"):
+        t["started"] = t["finished"] = None
 
 
 def cmd_ticket(a):
@@ -344,6 +366,7 @@ def cmd_ticket(a):
     def go(st):
         t = st["tickets"].get(a.id) or die("unknown ticket " + a.id)
         t["status"] = a.status
+        stamp_leg(t, a.status)
         if a.status == "running":
             st["step"] = max(st["step"], 5)
         if a.note:
@@ -359,6 +382,7 @@ def cmd_result(a):
     def go(st):
         t = st["tickets"].get(a.id) or die("unknown ticket " + a.id)
         t["status"] = a.status
+        stamp_leg(t, a.status)
         t["summary"] = a.summary or t["summary"]
         t["closing"] = [c for c in (a.closing or []) if c][:2] or t["closing"]
         t["gap"] = a.gap or ""
@@ -396,6 +420,8 @@ def cmd_brief(a):
             L.append("%s: %s" % (lab, "; ".join(t[k])))
     if t["tests_later"]:
         L.append("Self-check/test to write (do not run): %s" % "; ".join(t["tests_later"]))
+    if t.get("details"):
+        L.append("User details (follow them): " + " | ".join(d["text"] for d in t["details"]))
     L.append("Rules: read ONLY the lists above, by line range. Do NOT explore outside them: if you need more, "
              "reply 'CONTEXT-GAP: <what and why>' and stop. Do not run tests or the suite. No new dependency for a few lines.")
     L.append("Final reply format: line 1 'DONE' | 'GAP' | 'BLOCKED'; then 'Summary:' (max 5 lines); 'Files:' list; "
@@ -440,6 +466,9 @@ def cmd_status(a):
     root = root_or_die()
     st = F.load(root)
     R.write(root, st)
+    if a.brief:
+        print(tui.brief(st))
+        return
     width = a.width or min(shutil.get_terminal_size((110, 30)).columns, 110)
     print(tui.render_text(st, width, color=a.color))
 
@@ -459,6 +488,45 @@ def cmd_watch_hint(a):
 def cmd_render(a):
     root = root_or_die()
     print(R.write(root, F.load(root)))
+
+
+def cmd_dashboard(a):
+    root = root_or_die()
+    if a.action == "stop":
+        D.stop(root)
+        print("dashboard stopped")
+        return
+    url = D.open_for(root)
+    if not url:
+        die("dashboard server did not start; static view: .claude/forge/dashboard.html")
+    print("dashboard: %s" % url)
+
+
+def cmd_detail(a):
+    root = root_or_die()
+
+    def go(st):
+        t = st["tickets"].get(a.id) or die("unknown ticket " + a.id)
+        t.setdefault("details", []).append({"t": F.now(), "text": a.text})
+        F.log(st, "detail added to %s" % a.id)
+    F.update(root, go)
+    print("detail added to", a.id)
+
+
+def cmd_inbox(a):
+    root = root_or_die()
+
+    def go(st):
+        new = [m for m in st["inbox"] if not m["read"]]
+        if not a.peek:
+            for m in new:
+                m["read"] = True
+        return new
+    new = F.update(root, go)
+    if not new:
+        print("inbox: nothing new")
+    for m in new:
+        print("- %s%s" % ("[%s] " % m["ticket"] if m.get("ticket") else "", m["text"]))
 
 
 def cmd_shortcuts(a):
@@ -531,11 +599,15 @@ def main(argv=None):
     add("tests", cmd_tests, (["status"], {"choices": ["none", "running", "pass", "fail"]}), (["--summary"], {}))
     add("blocker", cmd_blocker, (["action"], {"choices": ["add", "clear"]}), (["text"], {"nargs": "?"}))
     add("finish", cmd_finish)
-    add("status", cmd_status, (["--width"], {"type": int}), (["--color"], {"action": "store_true"}))
+    add("status", cmd_status, (["--width"], {"type": int}), (["--color"], {"action": "store_true"}),
+        (["--brief"], {"action": "store_true"}))
     add("watch", cmd_watch, (["--ascii"], {"action": "store_true"}), (["--no-color"], {"action": "store_true"}))
     add("statusline", cmd_statusline)
     add("watch-hint", cmd_watch_hint)
     add("render", cmd_render)
+    add("dashboard", cmd_dashboard, (["action"], {"nargs": "?", "choices": ["stop"]}))
+    add("detail", cmd_detail, (["id"], {}), (["text"], {}))
+    add("inbox", cmd_inbox, (["--peek"], {"action": "store_true"}))
     add("shortcuts", cmd_shortcuts)
     add("export", cmd_export)
     add("claude-md", cmd_claude_md, (["action"], {"choices": ["check", "show", "apply"]}))

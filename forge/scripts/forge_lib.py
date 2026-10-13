@@ -123,7 +123,7 @@ def new_state(feature="", request="", keep=None):
         "approval": {"state": "none", "approved": []},
         "map": keep.get("map", {"head": "", "generated": "", "repo_tokens": 0}),
         "do_not_read": keep.get("do_not_read", list(DEFAULT_DNR)),
-        "enhanced": {}, "skipped": [],
+        "enhanced": {}, "skipped": [], "inbox": [],
         "phases": [], "tickets": {},
         "tests": {"status": "none", "summary": ""},
         "session": None, "overhead": {}, "agents": {},
@@ -401,7 +401,25 @@ def project_shortcuts(root):
 
 
 # ---------------------------------------------------------------- ponytail text
-def ponytail_text(level):
+COMPACT_RULES = """# Ponytail (Forge, compact)
+Smallest complete change. Finish every part the task needs (callers, tests, fixtures); add nothing nobody asked for.
+- Reuse existing helpers, stdlib and installed deps. No dependency for a few lines.
+- No wrapper, option, config, type conversion or "for later" code. Deletion beats addition.
+- Bug fix: grep every caller first; fix the root cause once in shared code.
+- Moved code keeps its error handling and validation.
+- New non-trivial logic: one small assert-based check. Known limit: `shortcut: <limit>, <when to upgrade>`.
+- Never cut: trust-boundary validation, data-loss error handling, security, accessibility.
+- End with one or two lines: what you skipped or did not check, and risks.
+"""
+
+
+def ponytail_text(level, compact=False):
+    """Full SKILL.md by default; COMPACT_RULES for subagents, where every token is paid per agent."""
+    if compact:
+        lv = {"lite": "lite: build what was asked; name the smaller option in one line.",
+              "full": "full: the rules above.",
+              "ultra": "ultra: also push back on any part the need does not justify."}.get(level, "full: the rules above.")
+        return COMPACT_RULES + "Active level: " + lv + "\n"
     p = os.path.join(PLUGIN_ROOT, "ponytail", "SKILL.md")
     try:
         txt = open(p, encoding="utf-8").read()

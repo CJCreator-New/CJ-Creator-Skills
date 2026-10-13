@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Forge terminal UI: live `watch`, one-shot `status`, one-line `statusline`. Stdlib only."""
+import datetime
 import json
 import os
 import re
@@ -18,10 +19,10 @@ LANES = [105, 75, 141, 213, 81, 215]
 
 UNI = dict(tl="╭", tr="╮", bl="╰", br="╯", h="─", v="│", full="█", empty="░", part=" ▏▎▍▌▋▊▉", done="✔", bad="✖",
            pend="○", appr="◐", spin="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", dot="●", cur="◉", hv="━", tm="├─", tl_="└─", star="★",
-           hammer="⚒", sep="·", arrow="▸", pause="‖", flag="⚑", up="▲", down="▼", ell="…", run="▶", dia="◆", ret="↳")
+           hammer="⚒", sep="·", arrow="▸", pause="‖", flag="⚑", up="▲", down="▼", ell="…", run="▶", dia="◆", ret="↳", runA="o/", runB="\\o", link="━►", idle="┄┄")
 ASC = dict(tl="+", tr="+", bl="+", br="+", h="-", v="|", full="#", empty=".", part="", done="v", bad="x",
            pend="o", appr="~", spin="|/-\\", dot="*", cur="@", hv="=", tm="|-", tl_="`-", star="*",
-           hammer="#", sep="-", arrow=">", pause="||", flag="!", up="^", down="v", ell="~", run=">", dia="*", ret="->")
+           hammer="#", sep="-", arrow=">", pause="||", flag="!", up="^", down="v", ell="~", run=">", dia="*", ret="->", runA="o/", runB="\\o", link="=>", idle="..")
 
 
 class Theme:
@@ -275,6 +276,96 @@ def tokens_box(t, st, s, W):
     return box(t, "Tokens", rows, W)
 
 
+# ----------------------------------------------------------------------------- relay
+QUIPS = {
+    "start": ["On your marks, the baton is waiting", "Stretching hamstrings, nobody move yet"],
+    "run": ["Sprinting through the edits", "Dodging merge conflicts at full speed", "Legs pumping, lungs burning", "Lap time is ticking"],
+    "slow": ["Taking the scenic route", "Slow down, Usain", "This leg has turned into a marathon"],
+    "finish": ["Crossed the line, baton delivered", "Every runner home, nothing dropped"],
+}
+
+
+def quip(kind, tick):
+    opts = QUIPS[kind]
+    return opts[(tick // 15) % len(opts)]
+
+
+def when(v):
+    try:
+        return datetime.datetime.fromisoformat(v) if v else None
+    except ValueError:
+        return None
+
+
+def leg_seconds(tk, now):
+    a = when(tk.get("started"))
+    if a is None:
+        return None
+    b = when(tk.get("finished")) or (now if tk["status"] == "running" else None)
+    return None if b is None else max(0, int((b - a).total_seconds()))
+
+
+def fmt_dur(sec):
+    if sec is None:
+        return "--:--"
+    if sec >= 3600:
+        return "%dh%02dm" % (sec // 3600, sec % 3600 // 60)
+    return "%d:%02d" % (sec // 60, sec % 60)
+
+
+def relay_box(t, st, W, tick, now):
+    """Each ticket is one leg. The runner carries the baton along the track; a finished leg hands it on."""
+    g, iw = t.g, W - 4
+    tks = list(st["tickets"].values())
+    if not tks:
+        return box(t, "Relay race", [t.c(MUT, "No runners yet. The baton waits for /forge-approve.")], W)
+    idw = max(5, max(len(x["id"]) for x in tks))
+    cw = idw + 9  # icon (2) + space + id + space + time (5)
+    cols = max(1, (iw + 4) // (cw + 4))  # each leg joins the next with " link "
+    secs = [leg_seconds(x, now) for x in tks]
+    done = [s_ for x, s_ in zip(tks, secs) if x["status"] == "done" and s_ is not None]
+    avg = sum(done) / len(done) if done else 0
+    cells = []
+    for x, sec in zip(tks, secs):
+        run = x["status"] == "running"
+        if run:
+            ic = t.c(RUN, g["runA"] if (tick // 3) % 2 == 0 else g["runB"], bold=True)
+            tcol = RUN
+        else:
+            ic = rpad(icon(t, x["status"], tick), 2)
+            tcol = {"done": INK, "blocked": BAD}.get(x["status"], MUT)
+        cells.append(ic + " " + t.c(INK if x["status"] != "pending" else MUT, rpad(x["id"], idw), bold=run) + " " + t.c(tcol, lpad(fmt_dur(sec), 5)))
+    body = []
+    for r in range(0, len(tks), cols):
+        end = min(r + cols, len(tks))
+        row = ""
+        for j in range(r, end):
+            row += cells[j]
+            if j + 1 < end:
+                row += " " + (t.c(OK, g["link"]) if tks[j]["status"] == "done" else t.c(FAINT, g["idle"])) + " "
+        body.append(row)
+    running = [x for x, s_ in zip(tks, secs) if x["status"] == "running"]
+    body.append("")
+    if running:
+        r0, sec = running[0], leg_seconds(running[0], now)
+        slow = bool(avg) and sec is not None and sec > 2 * avg
+        body.append(t.c(RUN, "%s %s" % (r0["id"], fmt_dur(sec)), bold=True) + t.c(MUT, "  %s  " % g["sep"])
+                    + t.c(WARN if slow else INK, quip("slow" if slow else "run", tick)))
+    elif all(x["status"] == "done" for x in tks):
+        body.append(t.c(XP, "%s %s" % (g["star"], quip("finish", tick)), bold=True))
+    else:
+        body.append(t.c(MUT, quip("start", tick)))
+    nd = sum(1 for x in tks if x["status"] == "done")
+    line = "legs %d/%d done  %s  avg leg %s" % (nd, len(tks), g["sep"], fmt_dur(int(avg)) if done else "--:--")
+    starts = [a for a in (when(x.get("started")) for x in tks) if a]
+    if starts:
+        ends = [when(x.get("finished")) or now for x in tks if when(x.get("started"))]
+        race = fmt_dur(int((max(ends) - min(starts)).total_seconds()))
+        line = "race %s  %s  %s" % (race, g["sep"], line)
+    body.append(t.c(MUT, line))
+    return box(t, "Relay race", body, W)
+
+
 def side_boxes(t, st, W):
     out = []
     if st["skipped"]:
@@ -294,6 +385,8 @@ def render(st, width=100, theme=None, tick=0, toasts=(), compact=False):
     s = F.summarize(st)
     L = header(t, st, s, W, tick) + [""]
     L += progress_box(t, st, s, W)
+    if not compact:
+        L += relay_box(t, st, W, tick, datetime.datetime.now(datetime.timezone.utc))
     L += alerts(t, st, W, toasts)
     if W >= 112:
         rw = 40
@@ -311,6 +404,30 @@ def render(st, width=100, theme=None, tick=0, toasts=(), compact=False):
 def render_text(st, width=100, color=False, uni=None):
     uni = (sys.stdout.encoding or "").lower().startswith("utf") if uni is None else uni
     return "\n".join(clip(l, width) for l in render(st, width, Theme(color, uni)))
+
+
+def brief(st):
+    """Plain few-line summary for the chat at each gate. The full layout stays in watch and the dashboard."""
+    if st is None:
+        return "Forge is not initialised. Run /forge-init."
+    s = F.summarize(st)
+    step = st["step"]
+    name = "Shipped" if st["finished"] else (F.STEPS[step - 1] if 1 <= step <= 9 else "Idle")
+    rem = sg(s["remaining"]) if s["remaining"] < 0 else hn(s["remaining"])
+    lines = [
+        "Forge %s: step %d/9 %s, approval %s, tests %s" % (st["feature"] or "no run", max(step, 1), name,
+                                                        st["approval"]["state"], st["tests"]["status"]),
+        "Tickets %d/%d done, tokens %s/%s (remaining %s)%s" % (s["done"], s["n"], hn(s["used"]), hn(s["expected"]), rem,
+                                                          " saved ~%s (est.)" % hn(s["saved"]) if s["saved"] > 0 else ""),
+    ]
+    for p in s["phases"]:
+        open_ids = [i for i in p["tickets"] if st["tickets"][i]["status"] != "done"]
+        mark = "cleared" if p["cleared"] else "%d/%d" % (p["done"], p["n"])
+        tail = " | open " + ", ".join(open_ids[:6]) if open_ids and not p["cleared"] else ""
+        lines.append("%s %s: %s, est %s%s" % (p["id"], p["title"], mark, hn(p["expected"]), tail))
+    if st["blockers"]:
+        lines.append("Blocked: " + "; ".join(st["blockers"][-3:]))
+    return "\n".join(lines)
 
 
 # ----------------------------------------------------------------------------- statusline
@@ -385,15 +502,16 @@ def diff_toasts(old, new):
     out = []
     if not old or not new or old.get("slug") != new.get("slug"):
         return out
+    now = datetime.datetime.now(datetime.timezone.utc)
     for i, t in new["tickets"].items():
         was = (old["tickets"].get(i) or {}).get("status")
         if was and was != t["status"]:
             if t["status"] == "done":
-                out.append(("%s cleared  +10 XP" % i, OK))
+                out.append(("%s baton passed after %s  +10 XP" % (i, fmt_dur(leg_seconds(t, now))), OK))
             elif t["status"] == "blocked":
-                out.append(("%s blocked" % i, BAD))
+                out.append(("%s dropped the baton" % i, BAD))
             elif t["status"] == "running":
-                out.append(("%s started" % i, RUN))
+                out.append(("%s grabbed the baton" % i, RUN))
     so, sn = F.summarize(old), F.summarize(new)
     if sn["cleared"] > so["cleared"]:
         out.append(("Phase cleared  +25 XP", XP))

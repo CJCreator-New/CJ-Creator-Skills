@@ -28,8 +28,9 @@ Plugin commands may show namespaced as `/forge:forge-approve` etc.
 
 ## Seeing progress (three views, one state file)
 
-- **Browser:** open `.claude/forge/dashboard.html` (self-contained, no network, refreshes every 3s).
+- **Live dashboard (browser):** `/forge-approve` opens it on your machine at `http://127.0.0.1:<port>/`, and the approval gate opens it so you can review the plan first. It shows the 9-step track, a relay race with each ticket as a leg and its time, token totals, phases and tickets. Each ticket has **+ Add detail** (the building agent sees it in its brief), and the bottom bar sends a **message to Forge**, which the orchestrator reads before the next build wave. Run `/forge-dashboard` to open it at any time and `python .claude/forge/forge.py dashboard stop` to stop the server. Without the server, `.claude/forge/dashboard.html` is a read-only snapshot.
 - **Live terminal view:** in a second terminal run `python .claude/forge/forge.py watch`. Full-screen, colored, redraws as state changes: animated spinners for running tickets, XP/progress bars, token bars, parallel lanes, a toast when a ticket or phase clears. Keys: `q` quit, `j/k` scroll, `c` compact, `r` reload. Flags: `--ascii` (plain terminals), `--no-color` (also honours `NO_COLOR`). Two columns at 112+ columns, stacked below that.
+- **Relay race panel:** each ticket is one leg of the race. The runner (`o/` `\o`) carries the baton along the track, and each finished leg passes it on with its time (`0:03`, `1:07`). A running leg shows a live timer, a leg that takes more than twice the average gets a "Slow down, Usain" quip, and the footer shows total race time and the average leg. Legs timed before this version show `--:--`.
 - **Claude Code status bar (optional):** `/forge-watch` prints a `statusLine` snippet for your settings; it shows `Forge 5/9 Execute | progress | 2 running | tokens | saved` and nothing when no run is active.
 - `/forge-status` prints the same layout once (no color) inside the Claude Code session.
 
@@ -50,5 +51,6 @@ Plugin commands may show namespaced as `/forge:forge-approve` etc.
 ## Known limits
 
 - Built and tested without a live Claude Code session: the scripts, hooks and dashboard are tested (`python tests/dry_run.py`), but the command/agent prompts and the exact hook payload fields (`agent_id`, `agent_type`, `agent_transcript_path`) depend on your Claude Code version. Hooks degrade gracefully (no attribution rather than wrong attribution).
-- Parallel worktree merging is done by the orchestrating model, not a script.
+- Parallel agents share one working tree. `F ready` never gives two running tickets the same file, so there are no worktrees and no merge step. Dependents start as soon as their inputs finish (rolling, not wave by wave).
+- `F status --brief` prints a short plain summary for the chat; the full layout stays in `watch` and the dashboard.
 - Main-session usage (`Stop` hook) is the whole session total, not only Forge.

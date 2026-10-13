@@ -2,6 +2,7 @@
 """Dry run on a throwaway repo with a fake feature. No application code is changed by Forge itself;
 dev edits are simulated by hooks + fixture transcripts. Usage: python tests/dry_run.py [workdir]"""
 import json, os, subprocess, sys, tempfile
+os.environ.setdefault("FORGE_NO_DASHBOARD", "1")  # approve must not open a browser or start a server here
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUG = os.path.join(os.path.dirname(HERE), "forge")

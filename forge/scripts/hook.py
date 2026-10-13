@@ -57,7 +57,7 @@ def session_start(root, st, data):
 def subagent_start(root, st, data):
     kind = agent_kind(data)
     if F.is_active(st) and kind in PONYTAIL_AGENTS:
-        hook_out("SubagentStart", additionalContext=F.ponytail_text(st["ponytail_level"]))
+        hook_out("SubagentStart", additionalContext=F.ponytail_text(st["ponytail_level"], compact=True))
 
 
 def pre_tool(root, st, data):
