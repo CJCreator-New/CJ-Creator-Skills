@@ -72,7 +72,7 @@ class T(unittest.TestCase):
         if pid == 0:
             os.chdir(d)
             os.environ.update(TERM="xterm-256color", PYTHONIOENCODING="utf-8", LANG="C.UTF-8")
-            os.execvp("python3", ["python3", os.path.join(SCR, "forge_cli.py"), "watch"])
+            os.execvp("python", ["python", os.path.join(SCR, "forge_cli.py"), "watch"])
         import fcntl, struct, termios
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 130, 0, 0))
         buf = b""

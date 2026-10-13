@@ -469,8 +469,8 @@ def watch(root, ascii_=False, color=None):
 
 def hint(root):
     launcher = os.path.join(F.forge_dir(root), "forge.py")
-    snip = {"statusLine": {"type": "command", "command": "[ -f .claude/forge/forge.py ] && python3 .claude/forge/forge.py statusline || true"}}
-    return ("LIVE TERMINAL VIEW - open a second terminal in this project and run:\n  python3 %s watch\n"
+    snip = {"statusLine": {"type": "command", "command": "[ -f .claude/forge/forge.py ] && python .claude/forge/forge.py statusline || true"}}
+    return ("LIVE TERMINAL VIEW - open a second terminal in this project and run:\n  python %s watch\n"
             "  (q quits, j/k scroll, c compact; --ascii for plain terminals)\n\n"
             "OPTIONAL status bar inside Claude Code - add to ~/.claude/settings.json (or .claude/settings.local.json):\n%s\n"
             "  (works when Claude Code is started from the project root; shows nothing when no Forge run is active)\n"

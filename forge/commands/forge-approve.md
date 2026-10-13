@@ -3,7 +3,7 @@ description: Approve Forge tickets and run them with parallel subagents (all | p
 argument-hint: all | phase N | <ticket IDs> [--test-mode per_phase]
 allowed-tools: Bash, Read, Agent
 ---
-Approve: $ARGUMENTS (if empty, ask which). `F` = `python3 .claude/forge/forge.py`. Terse; no file dumps.
+Approve: $ARGUMENTS (if empty, ask which). `F` = `python .claude/forge/forge.py`. Terse; no file dumps.
 
 1. `F approve <args>` (same args). Show any WARNING lines.
 2. Step 5/9 - Execute (print the banner). Loop:

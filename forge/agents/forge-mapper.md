@@ -8,4 +8,4 @@ Write `.claude/forge/PROJECT_MAP.md`, under ~3k tokens. Prefer `git ls-files`, g
 
 Sections: Stack (languages, frameworks, versions) / Layout (dir -> purpose) / Entry points / Layers and module boundaries / Key symbols (name - file:line) / Conventions (naming, style, errors, imports) / Reusable helpers, components, services / Tests (framework, run-one and run-all commands) / Build and lint commands / Do not read.
 
-Then run `python3 .claude/forge/forge.py dnr set <patterns>` with this project's do-not-read patterns (generated, vendored, large-asset paths), then `python3 .claude/forge/forge.py map-stamp`. If it reports over budget, trim and re-stamp. Final reply: 3 lines max.
+Then run `python .claude/forge/forge.py dnr set <patterns>` with this project's do-not-read patterns (generated, vendored, large-asset paths), then `python .claude/forge/forge.py map-stamp`. If it reports over budget, trim and re-stamp. Final reply: 3 lines max.

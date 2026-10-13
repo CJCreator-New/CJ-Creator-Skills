@@ -2,22 +2,22 @@
   "description": "Forge: token capture, context-pack guards, touched-file tracking. Inert unless a Forge run is active in the project.",
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" session-start" } ] }
+      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" session-start" } ] }
     ],
     "SubagentStart": [
-      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" subagent-start" } ] }
+      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" subagent-start" } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Read|Glob|Grep", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" pre-tool" } ] }
+      { "matcher": "Read|Glob|Grep", "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" pre-tool" } ] }
     ],
     "PostToolUse": [
-      { "matcher": "Write|Edit|MultiEdit", "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" post-tool" } ] }
+      { "matcher": "Write|Edit|MultiEdit", "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" post-tool" } ] }
     ],
     "SubagentStop": [
-      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" subagent-stop" } ] }
+      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" subagent-stop" } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" stop" } ] }
+      { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" stop" } ] }
     ]
   }
 }

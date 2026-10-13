@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Write, Bash
 model: sonnet
 ---
 Input: the final spec. Ponytail rules are injected at start. Plan the smallest complete set of tickets: reuse existing code, stdlib and installed dependencies before any new module; never plan a dependency for a few lines; drop tickets that only add "for later" flexibility.
-Write `.claude/forge/work/plan.json` and run `python3 .claude/forge/forge.py plan .claude/forge/work/plan.json` (`--append` for extra tickets). Fix any error it prints.
+Write `.claude/forge/work/plan.json` and run `python .claude/forge/forge.py plan .claude/forge/work/plan.json` (`--append` for extra tickets). Fix any error it prints.
 `{"phases":[{"id":"P1","title":""}],"tickets":[{"id":"P1-T1","phase":"P1","title":"","description":"","edit":["path"],"create":["path"],"read":["path:a-b"],"symbols":[],"imitate":["path:a-b"],"conventions":[],"deps":[],"group":"A","complexity":"S|M|L|complex","tests_later":["one small self-check"],"diff_lines":20}],"skipped":[]}`
 - Slice the context pack per ticket: exact paths or `path:a-b` ranges only. `diff_lines` is the expected changed lines; keep it honest and small.
 - Do NOT guess token numbers: the CLI computes estimates, ranges and baselines from the pack.

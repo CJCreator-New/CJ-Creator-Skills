@@ -62,7 +62,7 @@ def cmd_init(a):
     write_launcher(root)
     st = F.load(root)
     R.write(root, st)
-    print("Forge ready in %s\n  launcher: python3 .claude/forge/forge.py\n  dashboard: .claude/forge/dashboard.html" % root)
+    print("Forge ready in %s\n  launcher: python .claude/forge/forge.py\n  dashboard: .claude/forge/dashboard.html" % root)
 
 
 def cmd_new_run(a):

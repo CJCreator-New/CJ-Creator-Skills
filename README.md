@@ -29,7 +29,7 @@ Plugin commands may show namespaced as `/forge:forge-approve` etc.
 ## Seeing progress (three views, one state file)
 
 - **Browser:** open `.claude/forge/dashboard.html` (self-contained, no network, refreshes every 3s).
-- **Live terminal view:** in a second terminal run `python3 .claude/forge/forge.py watch`. Full-screen, colored, redraws as state changes: animated spinners for running tickets, XP/progress bars, token bars, parallel lanes, a toast when a ticket or phase clears. Keys: `q` quit, `j/k` scroll, `c` compact, `r` reload. Flags: `--ascii` (plain terminals), `--no-color` (also honours `NO_COLOR`). Two columns at 112+ columns, stacked below that.
+- **Live terminal view:** in a second terminal run `python .claude/forge/forge.py watch`. Full-screen, colored, redraws as state changes: animated spinners for running tickets, XP/progress bars, token bars, parallel lanes, a toast when a ticket or phase clears. Keys: `q` quit, `j/k` scroll, `c` compact, `r` reload. Flags: `--ascii` (plain terminals), `--no-color` (also honours `NO_COLOR`). Two columns at 112+ columns, stacked below that.
 - **Claude Code status bar (optional):** `/forge-watch` prints a `statusLine` snippet for your settings; it shows `Forge 5/9 Execute | progress | 2 running | tokens | saved` and nothing when no run is active.
 - `/forge-status` prints the same layout once (no color) inside the Claude Code session.
 
@@ -49,6 +49,6 @@ Plugin commands may show namespaced as `/forge:forge-approve` etc.
 
 ## Known limits
 
-- Built and tested without a live Claude Code session: the scripts, hooks and dashboard are tested (`python3 tests/dry_run.py`), but the command/agent prompts and the exact hook payload fields (`agent_id`, `agent_type`, `agent_transcript_path`) depend on your Claude Code version. Hooks degrade gracefully (no attribution rather than wrong attribution).
+- Built and tested without a live Claude Code session: the scripts, hooks and dashboard are tested (`python tests/dry_run.py`), but the command/agent prompts and the exact hook payload fields (`agent_id`, `agent_type`, `agent_transcript_path`) depend on your Claude Code version. Hooks degrade gracefully (no attribution rather than wrong attribution).
 - Parallel worktree merging is done by the orchestrating model, not a script.
 - Main-session usage (`Stop` hook) is the whole session total, not only Forge.
