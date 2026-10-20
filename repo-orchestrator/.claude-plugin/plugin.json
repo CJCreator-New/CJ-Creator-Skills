@@ -1,0 +1,8 @@
+{
+  "name": "repo-orchestrator",
+  "version": "0.1.0",
+  "description": "Repository-aware engineering orchestrator: researches the repo, plans only the work needed, implements with file ownership, then tests once at the end and remediates by root cause.",
+  "author": {
+    "name": "CJCreator"
+  }
+}

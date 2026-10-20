@@ -12,6 +12,12 @@
       "version": "1.1.0",
       "license": "MIT",
       "keywords": ["workflow", "subagents", "planning", "token-efficiency", "dashboard"]
+    },
+    {
+      "name": "repo-orchestrator",
+      "source": "./repo-orchestrator",
+      "description": "Repository-aware engineering orchestrator: researches the repo, plans only the work needed, implements with file ownership, then tests once at the end and remediates by root cause.",
+      "version": "0.1.0"
     }
   ]
 }
