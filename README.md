@@ -6,12 +6,33 @@ A token-efficient feature workflow for Claude Code, packaged as a plugin. Works 
 
 ## Install
 
+One command installs everything in this repo. Run it again any time to update.
+
+macOS, Linux, WSL, Git Bash:
+```sh
+curl -fsSL https://raw.githubusercontent.com/CJCreator-New/CJ-Creator-Skills/main/install.sh | sh
 ```
-/plugin marketplace add <path-or-git-url-of-this-folder>
+
+Windows PowerShell:
+```powershell
+irm https://raw.githubusercontent.com/CJCreator-New/CJ-Creator-Skills/main/install.ps1 | iex
+```
+
+- **Claude Code** (when the `claude` CLI is on PATH): registers this repo as the `forge-marketplace` and installs `forge` and `repo-orchestrator` at user scope.
+- **Other agents:** copies the `ponytail` skill to `~/.agents/skills/` (Windows: `%USERPROFILE%\.agents\skills\`). Forge and repo-orchestrator depend on Claude Code's slash commands, hooks and subagents, so they stay Claude-only.
+- **Where the files go:** a clone at `~/.local/share/cj-creator-skills/` (Windows: `%LOCALAPPDATA%\cj-creator-skills\`). Git is used when present; otherwise the GitHub archive is downloaded.
+- **Options:** `sh install.sh --ref <branch|tag> --agents-dir <dir> --skip-claude --skip-agents`. Piped installs take the same options after `sh -s --`, or the environment variables `CJ_SKILLS_REF`, `CJ_SKILLS_AGENTS_DIR`, `CJ_SKILLS_HOME` (PowerShell: `$env:` names, no parameters through `iex`).
+- **From a checkout:** `sh install.sh` (or `.\install.ps1`) installs that checkout in place instead of downloading a copy.
+
+Manual install, Claude Code only:
+```
+/plugin marketplace add CJCreator-New/CJ-Creator-Skills
 /plugin install forge@forge-marketplace
+/plugin install repo-orchestrator@forge-marketplace
 ```
+
 Then, in any project: `/forge-init` once (optional, `/forge` does it), then `/forge <feature request>`.
-Plugin commands may show namespaced as `/forge:forge-approve` etc.
+Plugin commands may show namespaced as `/forge:forge-approve` etc. Forge needs Python 3.8+ available as `python`.
 
 ## Commands
 

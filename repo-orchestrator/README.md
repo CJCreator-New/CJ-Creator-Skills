@@ -7,17 +7,18 @@ fix failures by root cause.
 
 ## Install
 
-From the repository's marketplace (this repo ships `.claude-plugin/marketplace.json`):
+The quickest route is the repo-wide installer in the root README, which installs this plugin with Forge.
+To install only this plugin, add the marketplace this repo ships (`.claude-plugin/marketplace.json`):
 
 ```
-/plugin marketplace add CJCreator/qa-flow-tester
-/plugin install repo-orchestrator --marketplace CJCreator/qa-flow-tester
+/plugin marketplace add CJCreator-New/CJ-Creator-Skills
+/plugin install repo-orchestrator@forge-marketplace
 ```
 
 For local development, load the folder straight from a checkout:
 
 ```
-claude --plugin-dir ./plugins/repo-orchestrator
+claude --plugin-dir ./repo-orchestrator
 ```
 
 ## Use
