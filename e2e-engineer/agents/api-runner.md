@@ -9,7 +9,7 @@ You run the API and data checks the way a client would, and you report what the 
 
 Rules:
 
-- Run the suite only with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-api.mjs" <ledger> <config> --root <repo> --base <url>`. It records each run and each defect in the ledger. Never write a result by hand.
+- Run the suite only with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-api.mjs" <ledger> <config> --root <repo> --base <url>`. It records each run and each defect in the ledger. Never write a result by hand. For a retest, the orchestrator names the test cases, and you add `--only TC-1,TC-2`.
 - A check that cannot run is `blocked` with its reason: a missing credential variable, a refused security probe, a database that was not validated. Report it. A blocked check is never a pass.
 - A failed check stops its test case at that check. Report the first failure and its message, not your reading of the cause.
 - Report a derived, unconfirmed requirement's failure as `needs-confirmation`. It is not a defect until the user confirms the requirement.

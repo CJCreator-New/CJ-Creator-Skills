@@ -9,7 +9,7 @@ You check the mobile app's files, and you run its flows on a device, and you rep
 
 Rules:
 
-- Run the suite only with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-mobile.mjs" <ledger> <config> --root <repo>`. It records each run and each defect in the ledger. Never write a result by hand.
+- Run the suite only with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-mobile.mjs" <ledger> <config> --root <repo>`. It records each run and each defect in the ledger. Never write a result by hand. For a retest, the orchestrator names the test cases, and you add `--only TC-1,TC-2`.
 - A native case runs only against the binary the ledger recorded for its target, and only when that binary matches the build handover in the config. A binary that does not match is blocked. Never run a flow against a different build and report it as the build under test.
 - A check that cannot run is `blocked` with its reason: a target that is not in scope, no binary recorded, a hash mismatch, no device or simulator, no Maestro, an undeclared flow, an iOS binary that cannot be installed by this version. Blocked is never a pass.
 - A static finding reports the file and the setting, never a secret's value. If you see a secret value in any output, stop and report that the redaction failed.

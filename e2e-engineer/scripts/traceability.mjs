@@ -6,10 +6,11 @@
 import { validateChecks } from './checks.mjs';
 import { validateSteps } from './web-steps.mjs';
 import { validateNativeChecks } from './native.mjs';
+import { validateLoadChecks } from './load.mjs';
 
 export const ORACLES = ['spec', 'design', 'contract', 'doc', 'observed'];
 export const PRIORITIES = ['P0', 'P1', 'P2'];
-export const LAYERS = ['web', 'mobile-web', 'android', 'ios', 'api', 'db', 'static'];
+export const LAYERS = ['web', 'mobile-web', 'android', 'ios', 'api', 'db', 'static', 'perf'];
 export const AUTOMATION = ['planned', 'implemented', 'executed'];
 export const BRANCH_KINDS = ['success', 'failure', 'permission', 'cancel', 'duplicate', 'recovery'];
 export const OUTCOMES = ['allowed', 'denied', 'conditional'];
@@ -35,6 +36,12 @@ function refs(list, known, errors, owner, label) {
 
 function nonEmptyText(value) {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+// A test case is in scope unless the plan takes it out, with a reason. An out-of-scope test case is not
+// run and does not count toward the gate, and the report lists it with its reason.
+export function inScope(testCase) {
+  return testCase.outOfScope === undefined;
 }
 
 // Checks the plan and returns { errors, warnings, gaps, coverage }. The plan is complete enough to
@@ -126,6 +133,10 @@ export function validatePlan(ledger) {
     if (!LAYERS.includes(test.layer)) errors.push(`test case ${test.id} needs a layer: ${LAYERS.join(', ')}`);
     if (!AUTOMATION.includes(test.automation)) errors.push(`test case ${test.id} needs an automation status: ${AUTOMATION.join(', ')}`);
     if (typeof test.mutates !== 'boolean') errors.push(`test case ${test.id} must say whether it mutates data (mutates: true or false)`);
+    if (test.outOfScope !== undefined) {
+      if (nonEmptyText(test.outOfScope)) warnings.push(`test case ${test.id} is out of scope: ${test.outOfScope}`);
+      else errors.push(`test case ${test.id} is out of scope, so it needs the reason as text in outOfScope`);
+    }
     if (!Array.isArray(test.expected) || test.expected.length === 0) errors.push(`test case ${test.id} has no expected results`);
     if (test.automation === 'implemented' && ['api', 'db'].includes(test.layer)) {
       for (const problem of validateChecks(test)) errors.push(problem);
@@ -135,6 +146,9 @@ export function validatePlan(ledger) {
     }
     if (test.automation === 'implemented' && ['static', 'android', 'ios'].includes(test.layer)) {
       for (const problem of validateNativeChecks(test)) errors.push(problem);
+    }
+    if (test.automation === 'implemented' && test.layer === 'perf') {
+      for (const problem of validateLoadChecks(test)) errors.push(problem);
     }
 
     if (!ORACLES.includes(test.oracle)) {
@@ -156,12 +170,14 @@ export function validatePlan(ledger) {
 
   const coveredRequirements = new Set();
   const coveredJourneys = new Set();
+  const journeysInScope = new Set();
   const coveredControls = new Set();
   const coveredPermissions = new Set();
   const coveredOperations = new Set();
   for (const test of tests.values()) {
     for (const id of test.requirements || []) coveredRequirements.add(id);
     for (const id of test.journeys || []) coveredJourneys.add(id);
+    if (inScope(test)) for (const id of test.journeys || []) journeysInScope.add(id);
     for (const key of test.controls || []) coveredControls.add(key);
     for (const id of test.permissions || []) coveredPermissions.add(id);
     for (const id of test.operations || []) coveredOperations.add(id);
@@ -171,9 +187,10 @@ export function validatePlan(ledger) {
     if (!coveredRequirements.has(req.id)) gaps.push(`requirement ${req.id} has no test case`);
   }
   for (const journey of journeys.values()) {
-    if (coveredJourneys.has(journey.id)) continue;
-    if (journey.priority === 'P0') errors.push(`P0 journey ${journey.id} has no test case`);
-    else gaps.push(`journey ${journey.id} has no test case`);
+    if (coveredJourneys.has(journey.id) && journeysInScope.has(journey.id)) continue;
+    const what = coveredJourneys.has(journey.id) ? 'no test case in scope' : 'no test case';
+    if (journey.priority === 'P0') errors.push(`P0 journey ${journey.id} has ${what}`);
+    else gaps.push(`journey ${journey.id} has ${what}`);
   }
   for (const screen of screens.values()) {
     const inJourney = [...journeys.values()].some((journey) => (journey.screens || []).includes(screen.id));
@@ -224,6 +241,7 @@ export function validatePlan(ledger) {
       planned: [...tests.values()].filter((t) => t.automation === 'planned').length,
       implemented: [...tests.values()].filter((t) => t.automation === 'implemented').length,
       executed: [...tests.values()].filter((t) => t.automation === 'executed').length,
+      outOfScope: [...tests.values()].filter((t) => !inScope(t)).length,
     },
   };
 

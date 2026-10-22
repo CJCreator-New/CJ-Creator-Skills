@@ -15,9 +15,9 @@ The artifact package is rendered from the ledger by `scripts/artifacts.mjs`. It 
 | `06_TEST_CASE_CATALOG.md` | Every test case with its layer, oracle, requirements, journeys and first expected result |
 | `07_TEST_EXECUTION_PLAN.md` | Read-only lane in parallel, mutating lane in series, stop conditions, retest |
 | `08_MOCK_DATA_AND_ENVIRONMENT_GUIDE.md` | Fixtures and accounts by role, with environment-variable names only |
-| `09_DEFECT_AND_REMEDIATION_REGISTER.md` | Defects, with severity and status |
+| `09_DEFECT_AND_REMEDIATION_REGISTER.md` | Defects with severity, status, owner and the current state of their test cases; handoff, claim, retest and regression for each |
 | `10_ACCEPTANCE_CRITERIA_AND_REGRESSION_PLAN.md` | Each requirement with its oracle, confirmation and tests; the regression rule |
-| `11_FINAL_QA_REPORT.md` | Gate status, coverage as separate measures, results, defects, security, unverified areas, recommendation |
+| `11_FINAL_QA_REPORT.md` | Gate status, coverage as separate measures, test cases by state, defects by severity, security, unverified areas (blocked, gaps, unconfirmed, flaky, stale, out of scope), recommendation |
 | `data/*.json` | Traceability, flow coverage, the role-permission matrix, the test catalogue and the defect register |
 
 ## Coverage
@@ -28,10 +28,12 @@ Coverage is reported as separate measures, never as one percentage: requirements
 
 The gate status is computed by `status()` in the ledger, with this precedence:
 
-1. Any failed run gives `FAIL`.
-2. Otherwise, intake not run, a refused run, an unapproved plan, a plan changed after approval, or a blocked target in scope gives `BLOCKED`, with the reason.
-3. Otherwise, no journeys, or a P0 journey without a passing run, gives `PARTIALLY TESTED`.
+1. Any in-scope test case whose current state is failed, or any open Critical or High defect, gives `FAIL`.
+2. Otherwise, intake not run, a refused run, an unapproved plan, a plan changed after approval, a blocked target in scope, or a blocked test case on a P0 journey gives `BLOCKED`, with the reason.
+3. Otherwise, no journeys, a P0 journey without a current pass on each of its test cases, any other in-scope test case without a current pass (not run, stale, flaky, needs-confirmation), or any open defect gives `PARTIALLY TESTED`.
 4. Otherwise `PASS`.
+
+A test case's state is read from its runs on the current build, under its current definition. A run from an earlier build, or from before the test case changed, is `stale`. A test case that passed and failed on the same build is `flaky`. Test cases the plan takes out of scope (`outOfScope`, with the reason) are not run, do not count, and are listed with the status.
 
 `PASS WITH ACCEPTED RISKS` needs a named decision for each accepted item, and it is not produced in this version. The artifacts do not change the status. A report that disagrees with the status states the disagreement as a decision for the user.
 

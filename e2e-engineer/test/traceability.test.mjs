@@ -17,8 +17,17 @@ describe('the planted-app plan', () => {
     assert.deepEqual(result.errors, []);
   });
 
-  test('reports the derived, unconfirmed requirement as a warning', () => {
-    assert.deepEqual(result.warnings, ['requirement REQ-UI-004 is derived and not confirmed, so it cannot drive a FAIL']);
+  test('warns about the out-of-scope test cases, with their reason, and has no unconfirmed requirement', () => {
+    assert.equal(result.warnings.length, 2);
+    assert.match(result.warnings[0], /^test case TC-AND-01 is out of scope: native targets are out of scope for this release/);
+    assert.match(result.warnings[1], /^test case TC-IOS-01 is out of scope: /);
+  });
+
+  test('a derived requirement that is not confirmed is a warning', () => {
+    const warned = check((l) => {
+      l.requirements.find((r) => r.id === 'REQ-UI-004').confirmed = false;
+    });
+    assert.ok(warned.warnings.includes('requirement REQ-UI-004 is derived and not confirmed, so it cannot drive a FAIL'));
   });
 
   test('an observed test case is a warning, because it can record but cannot PASS or FAIL', () => {
@@ -38,7 +47,7 @@ describe('the planted-app plan', () => {
   test('reports coverage as separate measures, with P0 journeys counted on their own', () => {
     assert.deepEqual(result.coverage.requirements, { total: 15, withTestCases: 15 });
     assert.deepEqual(result.coverage.journeys, { total: 9, p0Total: 4, p0WithTestCases: 4, withTestCases: 9 });
-    assert.deepEqual(result.coverage.testCases, { total: 21, planned: 0, implemented: 21, executed: 0 });
+    assert.deepEqual(result.coverage.testCases, { total: 21, planned: 0, implemented: 21, executed: 0, outOfScope: 2 });
   });
 });
 
@@ -164,6 +173,22 @@ describe('the design map', () => {
       delete l.designMap;
     });
     assert.ok(result.errors.some((e) => e.startsWith('the design map is missing')));
+  });
+});
+
+describe('scope', () => {
+  test('an out-of-scope test case needs its reason as text', () => {
+    const result = check((l) => {
+      l.testCases.find((t) => t.id === 'TC-AND-01').outOfScope = true;
+    });
+    assert.ok(result.errors.includes('test case TC-AND-01 is out of scope, so it needs the reason as text in outOfScope'));
+  });
+
+  test('a P0 journey whose test cases are all out of scope is an error', () => {
+    const result = check((l) => {
+      l.testCases.find((t) => t.id === 'TC-ORD-03').outOfScope = 'not this release';
+    });
+    assert.ok(result.errors.includes('P0 journey J-04 has no test case in scope'));
   });
 });
 

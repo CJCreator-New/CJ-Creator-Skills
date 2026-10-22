@@ -3,12 +3,13 @@
 // run, and a defect for each confirmed failure, in the ledger. It refuses to run unless the run is
 // allowed and the approval matches the current plan.
 //
-// node scripts/run-api.mjs <ledger.json> <config.json> --root <repo> [--base <url>]
+// node scripts/run-api.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2] [--base <url>]
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readLedger, recordDefect, recordRun, writeLedger } from './ledger.mjs';
+import { readLedger, recordResults, writeLedger } from './ledger.mjs';
+import { selectTestCases } from './results.mjs';
 import { planDigest } from './plan.mjs';
 import { validateRun } from './safety.mjs';
 import { queryDatabase, resetDatabase, validateTarget } from './env.mjs';
@@ -75,7 +76,7 @@ export function createContext({ ledger, config, root, base, env, fetchImpl = fet
   return { request, sessionFor, query, probesAllowed, env };
 }
 
-export async function runApi({ ledgerPath, configPath, root, base, env, now }) {
+export async function runApi({ ledgerPath, configPath, root, base, env, now, only = null }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -90,7 +91,7 @@ export async function runApi({ ledgerPath, configPath, root, base, env, now }) {
   if (!baseUrl) throw new Error('no base URL: pass --base, or declare targets.web.baseUrl');
 
   const ctx = createContext({ ledger, config, root, base: baseUrl, env });
-  const testCases = ledger.testCases.filter((tc) => ['api', 'db'].includes(tc.layer) && tc.automation === 'implemented');
+  const testCases = selectTestCases(ledger, ['api', 'db'], only);
   const reset =
     config.db && config.allowReset === true
       ? async () => {
@@ -99,10 +100,7 @@ export async function runApi({ ledgerPath, configPath, root, base, env, now }) {
       : null;
 
   const results = await runSuite({ testCases, ledger, ctx, reset });
-  for (const result of results) {
-    recordRun(ledger, { testCase: result.id, result: result.result, reasons: result.reasons, failures: result.failures, evidence: result.evidence, now });
-    if (result.result === 'failed') recordDefect(ledger, { testCase: result.id, failures: result.failures, now });
-  }
+  const recorded = recordResults(ledger, results, { now });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};
@@ -113,6 +111,9 @@ export async function runApi({ ledgerPath, configPath, root, base, env, now }) {
     failed: results.filter((r) => r.result === 'failed').map((r) => ({ id: r.id, failures: r.failures })),
     blocked: results.filter((r) => r.result === 'blocked').map((r) => ({ id: r.id, reasons: r.reasons })),
     defects: ledger.defects.length,
+    opened: recorded.opened,
+    flaky: recorded.flaky,
+    transitions: recorded.transitions,
   };
 }
 
@@ -130,7 +131,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   const [ledgerPath, configPath] = positional;
   if (!ledgerPath || !configPath) {
-    console.error('usage: run-api.mjs <ledger.json> <config.json> --root <repo> [--base <url>]');
+    console.error('usage: run-api.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2] [--base <url>]');
     process.exit(1);
   }
   runApi({
@@ -140,6 +141,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     base: flags.base,
     env: process.env,
     now: new Date().toISOString(),
+    only: flags.only ? flags.only.split(',') : null,
   })
     .then((summary) => console.log(JSON.stringify(summary, null, 2)))
     .catch((error) => {

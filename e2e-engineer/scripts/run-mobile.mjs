@@ -5,13 +5,14 @@
 // is blocked, with its reason, when its target is not in scope, its binary is missing or does not match
 // the build handover, or its device or tools are not there.
 //
-// node scripts/run-mobile.mjs <ledger.json> <config.json> --root <repo>
+// node scripts/run-mobile.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2]
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Blocked, classify } from './checks.mjs';
-import { readLedger, recordDefect, recordRun, writeLedger } from './ledger.mjs';
+import { readLedger, recordResults, writeLedger } from './ledger.mjs';
+import { selectTestCases } from './results.mjs';
 import { planDigest } from './plan.mjs';
 import { resetDatabase, validateTarget } from './env.mjs';
 import { currentProbes, defaultExec, runNativeTestCase } from './native.mjs';
@@ -19,7 +20,7 @@ import { validateRun } from './safety.mjs';
 
 const LAYERS = ['static', 'android', 'ios'];
 
-export async function runMobile({ ledgerPath, configPath, root, env, now, exec = defaultExec, probes = null }) {
+export async function runMobile({ ledgerPath, configPath, root, env, now, exec = defaultExec, probes = null, only = null }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -42,7 +43,7 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
         }
       : null;
 
-  const testCases = ledger.testCases.filter((tc) => LAYERS.includes(tc.layer) && tc.automation === 'implemented');
+  const testCases = selectTestCases(ledger, LAYERS, only);
   const results = [];
   for (const testCase of testCases) {
     const finish = (outcome) => ({
@@ -86,10 +87,7 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
     results.push(finish(outcome));
   }
 
-  for (const result of results) {
-    recordRun(ledger, { testCase: result.id, result: result.result, reasons: result.reasons, failures: result.failures, evidence: result.evidence, now });
-    if (result.result === 'failed') recordDefect(ledger, { testCase: result.id, failures: result.failures, now });
-  }
+  const recorded = recordResults(ledger, results, { now });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};
@@ -100,6 +98,9 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
     failed: results.filter((r) => r.result === 'failed').map((r) => ({ id: r.id, failures: r.failures })),
     blocked: results.filter((r) => r.result === 'blocked').map((r) => ({ id: r.id, reasons: r.reasons })),
     defects: ledger.defects.length,
+    opened: recorded.opened,
+    flaky: recorded.flaky,
+    transitions: recorded.transitions,
     safety: decision.allowed,
   };
 }
@@ -118,7 +119,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   const [ledgerPath, configPath] = positional;
   if (!ledgerPath || !configPath) {
-    console.error('usage: run-mobile.mjs <ledger.json> <config.json> --root <repo>');
+    console.error('usage: run-mobile.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2]');
     process.exit(1);
   }
   runMobile({
@@ -127,6 +128,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     root: resolve(flags.root ?? '.'),
     env: process.env,
     now: new Date().toISOString(),
+    only: flags.only ? flags.only.split(',') : null,
   })
     .then((summary) => console.log(JSON.stringify(summary, null, 2)))
     .catch((error) => {

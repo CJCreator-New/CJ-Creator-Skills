@@ -120,14 +120,14 @@
       "flag": null,
       "title": "A test shares mutable order data with another test, so it is flaky",
       "layer": "test-suite",
-      "implementedIn": "a sample test suite, added in v0.3",
+      "implementedIn": "fixtures/planted-app/flaky-cases.json, loaded on top of the plan by the self-test",
       "detector": "orchestrator flake rule",
       "expected": "classified flaky, not passed"
     },
     {
       "planted": 12,
       "flag": "small-touch-target",
-      "title": "The approve button is smaller than 44 pixels below 600 pixels wide",
+      "title": "The approve button is shorter than 24 pixels below 600 pixels wide",
       "layer": "ui",
       "implementedIn": "public/index.html (planted-css)",
       "detector": "mobile-runner (mobile web)",

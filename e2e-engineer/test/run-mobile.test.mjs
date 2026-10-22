@@ -47,7 +47,12 @@ async function environment({ projectDir, android = null, withBinary = false } = 
   }
   writeFileSync(configPath, JSON.stringify(config));
   const ledger = fixtureLedger({ web: { status: 'ready' } });
-  if (android) ledger.intake.targets.android = android;
+  // The fixture plan takes the native cases out of scope. A test that declares an android target puts
+  // TC-AND-01 back in scope, to exercise the native path.
+  if (android) {
+    ledger.intake.targets.android = android;
+    delete ledger.testCases.find((t) => t.id === 'TC-AND-01').outOfScope;
+  }
   freezePlan(ledger, { now: NOW });
   approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
   if (withBinary) {
@@ -97,10 +102,10 @@ describe('the planted manifest', () => {
     assert.match(defect.evidence[0].message, /android:debuggable is "true"/);
   });
 
-  test('blocks the native cases, with the reason, because their targets are not in scope', () => {
-    const blocked = summary.blocked.map((b) => b.id).sort();
-    assert.deepEqual(blocked, ['TC-AND-01', 'TC-IOS-01']);
-    assert.ok(summary.blocked.every((b) => /target (android|ios) is not in scope/.test(b.reasons[0])));
+  test('does not run the native cases, because the plan takes them out of scope', () => {
+    assert.equal(summary.ran, 1);
+    assert.deepEqual(summary.blocked, []);
+    assert.ok(!readLedger(env.ledgerPath).runs.some((r) => ['TC-AND-01', 'TC-IOS-01'].includes(r.testCase)));
   });
 });
 

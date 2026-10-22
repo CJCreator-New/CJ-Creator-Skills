@@ -4,13 +4,14 @@
 // context and, when the config allows reset, a fresh database. Evidence (a screenshot and a redacted
 // log) is written under .claude/e2e-engineer/evidence. The plan must be approved and current.
 //
-// node scripts/run-web.mjs <ledger.json> <config.json> --root <repo> [--web <url>] [--mobile <url>]
+// node scripts/run-web.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2] [--web <url>] [--mobile <url>]
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Blocked, Infrastructure, classify, resolveValue } from './checks.mjs';
-import { readLedger, recordDefect, recordRun, writeLedger } from './ledger.mjs';
+import { readLedger, recordResults, writeLedger } from './ledger.mjs';
+import { selectTestCases } from './results.mjs';
 import { planDigest } from './plan.mjs';
 import { resetDatabase, validateTarget } from './env.mjs';
 import { findPlaywright, loadPlaywright } from './browser.mjs';
@@ -254,7 +255,7 @@ export async function runWebTestCase({ testCase, browser, base, viewports, ctx, 
 }
 
 // Runs every implemented web and mobile-web test case. Returns the results, sorted by ID.
-export async function runWeb({ ledgerPath, configPath, root, env, now, playwright = null, bases = {} }) {
+export async function runWeb({ ledgerPath, configPath, root, env, now, playwright = null, bases = {}, only = null }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -301,7 +302,7 @@ export async function runWeb({ ledgerPath, configPath, root, env, now, playwrigh
   }
 
   const requirementsById = new Map((ledger.requirements || []).map((r) => [r.id, r]));
-  const testCases = ledger.testCases.filter((tc) => ['web', 'mobile-web'].includes(tc.layer) && tc.automation === 'implemented');
+  const testCases = selectTestCases(ledger, ['web', 'mobile-web'], only);
   const results = [];
   for (const testCase of testCases) {
     const finish = (outcome) => ({
@@ -342,10 +343,7 @@ export async function runWeb({ ledgerPath, configPath, root, env, now, playwrigh
   }
   if (browser) await browser.close();
 
-  for (const result of results) {
-    recordRun(ledger, { testCase: result.id, result: result.result, reasons: result.reasons, failures: result.failures, evidence: result.evidence, now });
-    if (result.result === 'failed') recordDefect(ledger, { testCase: result.id, failures: result.failures, now });
-  }
+  const recorded = recordResults(ledger, results, { now });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};
@@ -357,6 +355,9 @@ export async function runWeb({ ledgerPath, configPath, root, env, now, playwrigh
     blocked: results.filter((r) => r.result === 'blocked').map((r) => ({ id: r.id, reasons: r.reasons })),
     evidence: evidenceRel,
     defects: ledger.defects.length,
+    opened: recorded.opened,
+    flaky: recorded.flaky,
+    transitions: recorded.transitions,
   };
 }
 
@@ -374,7 +375,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   const [ledgerPath, configPath] = positional;
   if (!ledgerPath || !configPath) {
-    console.error('usage: run-web.mjs <ledger.json> <config.json> --root <repo> [--web <url>] [--mobile <url>]');
+    console.error('usage: run-web.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2] [--web <url>] [--mobile <url>]');
     process.exit(1);
   }
   runWeb({
@@ -383,6 +384,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     root: resolve(flags.root ?? '.'),
     env: process.env,
     now: new Date().toISOString(),
+    only: flags.only ? flags.only.split(',') : null,
     bases: { web: flags.web, mobile: flags.mobile },
   })
     .then((summary) => console.log(JSON.stringify(summary, null, 2)))

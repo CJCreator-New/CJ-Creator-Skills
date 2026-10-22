@@ -21,6 +21,18 @@
   ],
   "notCovered": [
     "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest.",
-    "The plan changes that apply the user's decisions of 2026-10-22 (native cases out of scope, REQ-UI-001 and REQ-APR-004 confirmed, REQ-UI-004 at 24 by 24). They change the digest, so they need their own approval."
-  ]
+    "The plan at digest 529f3e90, which applies the decisions above. It needs its own approval."
+  ],
+  "decisions": {
+    "recordedAt": "2026-10-22",
+    "by": "csaravana.csk@gmail.com",
+    "applied": [
+      "TC-AND-01 and TC-IOS-01 are out of scope for this release (decision 2b; D6 stays open).",
+      "REQ-UI-001 (Export downloads the visible orders as JSON) is confirmed.",
+      "REQ-APR-004 (a staff member cannot approve an order) is confirmed.",
+      "REQ-UI-004 is set to 24 by 24 CSS pixels (WCAG 2.2 SC 2.5.8, level AA) and confirmed; TC-UI-04 checks 24."
+    ],
+    "resultingDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
+    "status": "pending approval: the plan with these decisions applied has a new digest, and it is not approved until the user approves that digest"
+  }
 }

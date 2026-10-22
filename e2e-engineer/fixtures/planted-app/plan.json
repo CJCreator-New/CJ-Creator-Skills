@@ -94,13 +94,13 @@
       "id": "REQ-APR-004",
       "text": "A staff member cannot approve an order.",
       "oracle": "contract",
-      "source": "openapi.json approve description: managers approve up to 1000 and admins approve over 1000, so staff are not approvers"
+      "source": "openapi.json approve description: managers approve up to 1000 and admins approve over 1000, so staff are not approvers; confirmed by the user on 2026-10-22"
     },
     {
       "id": "REQ-UI-001",
       "text": "Export downloads the orders the user can see, as JSON.",
       "oracle": "spec",
-      "source": "the Export control on SCR-ORDERS is labelled Export, and the screen inventory states that it exports the visible orders as JSON (to be confirmed)"
+      "source": "the Export control on SCR-ORDERS is labelled Export, and the screen inventory states that it exports the visible orders as JSON; confirmed by the user on 2026-10-22"
     },
     {
       "id": "REQ-UI-002",
@@ -116,11 +116,11 @@
     },
     {
       "id": "REQ-UI-004",
-      "text": "Touch targets are at least 44 by 44 CSS pixels at phone widths.",
+      "text": "Touch targets are at least 24 by 24 CSS pixels at phone widths.",
       "oracle": "doc",
-      "source": "WCAG 2.2 2.5.5 Target Size (Enhanced); the team has not chosen this level",
+      "source": "WCAG 2.2 SC 2.5.8 Target Size (Minimum), level AA; level chosen by the user on 2026-10-22",
       "derived": true,
-      "confirmed": false
+      "confirmed": true
     },
     {
       "id": "REQ-UI-005",
@@ -1463,7 +1463,7 @@
         "SCR-ORDER-DETAIL.approve"
       ],
       "expected": [
-        "the approve control is at least 44 by 44 CSS pixels at 390 pixels wide"
+        "the approve control is at least 24 by 24 CSS pixels at 390 pixels wide"
       ],
       "automation": "implemented",
       "steps": [
@@ -1479,7 +1479,7 @@
           "act": "expectMinTarget",
           "role": "button",
           "name": "Approve",
-          "min": 44
+          "min": 24
         }
       ],
       "viewport": "phone"
@@ -1704,7 +1704,8 @@
           "target": "android",
           "flow": "sign-in-and-list"
         }
-      ]
+      ],
+      "outOfScope": "native targets are out of scope for this release: no device, emulator or simulator is available (user decision of 2026-10-22; D6)"
     },
     {
       "id": "TC-IOS-01",
@@ -1738,7 +1739,8 @@
           "target": "ios",
           "flow": "sign-in-and-list"
         }
-      ]
+      ],
+      "outOfScope": "native targets are out of scope for this release: no device, emulator or simulator is available (user decision of 2026-10-22; D6)"
     }
   ],
   "designMap": {

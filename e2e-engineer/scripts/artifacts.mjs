@@ -9,7 +9,10 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { status, readLedger, testState } from './ledger.mjs';
 import { canonical, planDigest, planState } from './plan.mjs';
-import { validatePlan } from './traceability.mjs';
+import { inScope, validatePlan } from './traceability.mjs';
+import { SEVERITIES } from './remediation.mjs';
+
+const TEST_STATES = ['passed', 'failed', 'blocked', 'needs-confirmation', 'flaky', 'stale', 'not run'];
 
 export const NAMES = {
   summary: '00_QA_EXECUTIVE_SUMMARY.md',
@@ -34,7 +37,7 @@ export const DATA_FILES = {
   defects: 'data/defect-register.json',
 };
 
-const LAYER_ORDER = ['static', 'api', 'db', 'web', 'mobile-web', 'android', 'ios'];
+const LAYER_ORDER = ['static', 'api', 'db', 'web', 'mobile-web', 'android', 'ios', 'perf'];
 
 const cell = (value) => (value === undefined || value === null ? '' : String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' '));
 const short = (hash) => (hash ? hash.slice(0, 12) : 'none');
@@ -247,8 +250,10 @@ function renderStrategy(c) {
     '## Exclusions',
     '',
     bullets([
-      'Load and stress testing: opt-in in a later version, with declared limits.',
+      'Load testing, unless the run opts in: read-only requests only, within config.loadLimits, and only with E2E_ALLOW_LOAD=1. Thresholds are proposed until the team confirms them.',
+      'Stress and soak testing.',
       'Native targets that are not declared in the config.',
+      ...c.tests.filter((t) => !inScope(t)).map((t) => `${t.id}: ${t.outOfScope}`),
       'Desktop and command-line interfaces.',
       'Live third-party integrations: doubles only, unless sandbox credentials are supplied.',
     ]),
@@ -286,6 +291,11 @@ function renderCatalog(c) {
       ['ID', 'Layer', 'Mutates', 'Oracle', 'Requirements', 'Journeys', 'Automation', 'First expected result'],
       c.tests.map((t) => [t.id, t.layer, t.mutates, t.oracle, (t.requirements || []).join(', '), (t.journeys || []).join(', '), t.automation, (t.expected || [])[0]]),
     ),
+    '## Out of scope',
+    '',
+    'These test cases are in the plan, but this release does not run them. They do not count toward the gate.',
+    '',
+    bullets(c.tests.filter((t) => !inScope(t)).map((t) => `${t.id}: ${t.outOfScope}`)),
   ].join('\n');
 }
 
@@ -343,15 +353,30 @@ function renderData(c) {
 }
 
 function renderDefects(c) {
-  const defects = c.ledger.defects || [];
+  const defects = sorted(c.ledger.defects || []);
+  const state = (id) => `${id} ${testState(c.ledger, id).state}`;
+  const remediation = defects.filter((d) => d.handoff || d.claim || d.retest || d.regression || d.mergedInto || d.flaky);
   return [
     '# 09 Defect and remediation register',
     '',
-    'Each defect has one ID, its reproducing test cases, its severity, and its state. A developer saying a fix is done moves a defect to Fix Claimed only.',
+    'Each defect has one ID, its reproducing test cases, its severity, and its state. A developer saying a fix is done moves a defect to Fix Claimed only. A defect closes only after its retest and its regression run pass on the current build.',
     '',
     table(
-      ['ID', 'Title', 'Severity', 'Status', 'Test cases'],
-      sorted(defects).map((d) => [d.id, d.title, d.severity, d.status, (d.testCases || []).join(', ')]),
+      ['ID', 'Title', 'Severity', 'Status', 'Owner', 'Test cases (state now)'],
+      defects.map((d) => [d.id, d.title, d.severity, d.status, d.owner ?? '', (d.testCases || []).map(state).join(', ')]),
+    ),
+    '## Remediation',
+    '',
+    table(
+      ['ID', 'Handoff', 'Fix claim', 'Retest', 'Regression', 'Notes'],
+      remediation.map((d) => [
+        d.id,
+        d.handoff ?? '',
+        d.claim ? `${d.claim.by}, ${d.claim.at}` : '',
+        d.retest ? `passed on ${short(d.retest.build)}` : '',
+        d.regression ? `${d.regression.status} on ${short(d.regression.build)}${d.regression.failing ? `: ${d.regression.failing.join(', ')}` : ''}${d.regression.missing ? `: ${d.regression.missing.join(', ')}` : ''}` : '',
+        [d.mergedInto ? `duplicate of ${d.mergedInto}` : '', d.flaky ? `flaky: ${d.flaky.join(', ')}` : '', d.regressionOf ? `regression of ${d.regressionOf}` : ''].filter(Boolean).join('; '),
+      ]),
     ),
   ].join('\n');
 }
@@ -367,8 +392,10 @@ function renderAcceptance(c) {
     '## Regression',
     '',
     bullets([
-      'Each fix re-runs the test cases that reference its requirement, and the test cases of the journeys it touches.',
-      'A defect closes only after its retest and its regression run pass on the current build.',
+      'A fix arrives as a new build. A pass on the build where the test failed is flaky, not a fix.',
+      'The retest runs the defect\'s own test cases on the new build (retest.mjs --defect).',
+      'The regression set is every in-scope test case on the defect\'s journeys and on the P0 journeys (retest.mjs --defect --regression).',
+      'A defect closes only after its retest and its regression run pass on the current build. A failure that another defect, found on an earlier build, already covers does not hold it open; a failure first seen on the new build does.',
     ]),
   ].join('\n');
 }
@@ -398,11 +425,17 @@ function renderReport(c) {
     ]),
     '## Execution results',
     '',
-    table(['Result', 'Runs'], ['passed', 'failed', 'blocked', 'skipped', 'not-run', 'stale', 'flaky'].map((r) => [r, c.runsByResult(r)])),
+    'The state of each in-scope test case on the current build. A stale run, from an earlier build or an earlier version of the test case, does not count.',
+    '',
+    table(['State', 'Test cases'], TEST_STATES.map((s) => [s, c.tests.filter((t) => inScope(t) && testState(ledger, t.id).state === s).length])),
+    `Out of scope: ${c.tests.filter((t) => !inScope(t)).length}. Runs recorded: ${ledger.runs.length}.`,
+    '',
     '## Defects',
     '',
-    `${(ledger.defects || []).length} recorded.`,
-    '',
+    table(['Severity', 'Open', 'Closed'], [...SEVERITIES, 'unassigned'].map((sev) => {
+      const of = (ledger.defects || []).filter((d) => d.severity === sev && d.disposition !== 'duplicate');
+      return [sev, of.filter((d) => d.status !== 'Closed').length, of.filter((d) => d.status === 'Closed').length];
+    })),
     '## Security and access control',
     '',
     `Permissions with test cases: ${cov.permissions.withTestCases} of ${cov.permissions.total}. Security probes: ${ledger.intake?.safety?.securityProbes?.allowed ? 'allowed' : `refused (${ledger.intake?.safety?.securityProbes?.reason})`}.`,
@@ -421,6 +454,12 @@ function renderReport(c) {
     '### Derived requirements not yet confirmed',
     '',
     bullets(unconfirmed),
+    '### Flaky and stale test cases',
+    '',
+    bullets(c.tests.filter((t) => inScope(t) && ['flaky', 'stale'].includes(testState(ledger, t.id).state)).map((t) => `${t.id} ${testState(ledger, t.id).state}`)),
+    '### Out of scope for this release',
+    '',
+    bullets(c.tests.filter((t) => !inScope(t)).map((t) => `${t.id}: ${t.outOfScope}`)),
     '## Release recommendation',
     '',
     `${st.status}. The gate status is the recommendation. This report does not change it.`,
@@ -460,7 +499,7 @@ function dataFiles(c) {
     [DATA_FILES.flows]: flows,
     [DATA_FILES.rbac]: rbac,
     [DATA_FILES.catalog]: c.tests,
-    [DATA_FILES.defects]: { defects: sorted(c.ledger.defects || []) },
+    [DATA_FILES.defects]: { defects: sorted(c.ledger.defects || []), handoffs: c.ledger.handoffs || [] },
   };
 }
 

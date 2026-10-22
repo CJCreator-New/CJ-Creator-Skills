@@ -8,6 +8,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describeBinary } from './binary.mjs';
 import { PLAN_COLLECTIONS, addItem, approvePlan, freezePlan, loadPlan, planDigest } from './plan.mjs';
+import { inScope } from './traceability.mjs';
+import { testHash, testState } from './results.mjs';
+import { claimFix, evaluateDefects, handOff, isOpen, mergeDefect, renderHandoff, reviewDefect, triageDefect } from './remediation.mjs';
+
+export { testState };
 
 export const SCHEMA = 1;
 export const STATUSES = ['PASS', 'PASS WITH ACCEPTED RISKS', 'FAIL', 'BLOCKED', 'PARTIALLY TESTED'];
@@ -18,7 +23,7 @@ export function defaultLedgerPath(root) {
 
 export function emptyLedger() {
   const plan = Object.fromEntries(PLAN_COLLECTIONS.map((key) => [key, []]));
-  return { schema: SCHEMA, intake: null, designMap: null, planFrozen: null, approval: null, binaries: [], runs: [], defects: [], ...plan };
+  return { schema: SCHEMA, intake: null, designMap: null, planFrozen: null, approval: null, binaries: [], runs: [], defects: [], handoffs: [], ...plan };
 }
 
 export function readLedger(path) {
@@ -63,27 +68,29 @@ export async function recordBinary(ledger, { target, file, versionName, buildNum
   return entry;
 }
 
-// The state of one test case, from its latest run. A run counts only for the build it ran on. A run
-// from an earlier build is stale, and it does not count.
-export function testState(ledger, testCaseId) {
-  const runs = ledger.runs.filter((run) => run.testCase === testCaseId);
-  if (runs.length === 0) return { state: 'not run' };
-  const latest = runs[runs.length - 1];
-  if (!ledger.intake?.build?.current || latest.build !== ledger.intake.build.treeHash) return { state: 'stale', run: latest.id };
-  return { state: latest.result, run: latest.id, reasons: latest.reasons || [] };
-}
-
+// The in-scope test cases of a journey. An out-of-scope test case does not count toward the gate.
 function journeyTests(ledger, journeyId) {
-  return ledger.testCases.filter((tc) => (tc.journeys || []).includes(journeyId));
+  return ledger.testCases.filter((tc) => inScope(tc) && (tc.journeys || []).includes(journeyId));
 }
 
-// Gate status with the precedence in the plan (G19): a failed test gives FAIL; an unmet or blocked
-// mandatory gate gives BLOCKED; a P0 journey that is not verified gives PARTIALLY TESTED; otherwise
-// PASS. A P0 journey is verified only when every test case linked to it has a current pass.
-// An approval counts only for the plan it was given for. A later change to the plan makes it stale.
+// Gate status with the precedence in the plan (G19): a failed test, or an open Critical or High
+// defect, gives FAIL; an unmet or blocked mandatory gate gives BLOCKED; a P0 journey that is not
+// verified gives PARTIALLY TESTED; otherwise PASS. A P0 journey is verified only when every test case
+// linked to it has a current pass. An approval counts only for the plan it was given for. A later
+// change to the plan makes it stale. Out-of-scope test cases are listed, and do not count.
 export function status(ledger) {
-  const failed = ledger.testCases.filter((tc) => testState(ledger, tc.id).state === 'failed');
-  if (failed.length > 0) return { status: 'FAIL', reasons: failed.map((tc) => `${tc.id} failed`) };
+  const outOfScope = ledger.testCases.filter((tc) => !inScope(tc)).map((tc) => ({ id: tc.id, reason: tc.outOfScope }));
+  const result = gate(ledger);
+  return outOfScope.length > 0 ? { ...result, outOfScope } : result;
+}
+
+function gate(ledger) {
+  const tests = ledger.testCases.filter(inScope);
+  const failed = tests.filter((tc) => testState(ledger, tc.id).state === 'failed').map((tc) => `${tc.id} failed`);
+  const severe = (ledger.defects || [])
+    .filter((d) => isOpen(d) && ['Critical', 'High'].includes(d.severity))
+    .map((d) => `${d.id} (${d.severity}) is open: ${d.status}`);
+  if (failed.length > 0 || severe.length > 0) return { status: 'FAIL', reasons: [...failed, ...severe] };
 
   if (!ledger.intake) return { status: 'BLOCKED', reasons: ['intake has not run'] };
   if (!ledger.intake.safety.allowed) {
@@ -127,15 +134,19 @@ export function status(ledger) {
   // G19: a planned test case that has not passed keeps the gate at PARTIALLY TESTED, even when every P0
   // journey is verified. PASS needs every test case in the plan to have a current pass.
   const p0Tests = new Set(p0.flatMap((journey) => journeyTests(ledger, journey.id).map((tc) => tc.id)));
-  const others = ledger.testCases
+  const others = tests
     .filter((tc) => !p0Tests.has(tc.id) && testState(ledger, tc.id).state !== 'passed')
     .map((tc) => `${tc.id} ${testState(ledger, tc.id).state}`);
-  if (unverified.length > 0 || others.length > 0) return { status: 'PARTIALLY TESTED', reasons: [...unverified, ...others] };
+  const open = (ledger.defects || []).filter(isOpen).map((d) => `${d.id} is open: ${d.status}`);
+  if (unverified.length > 0 || others.length > 0 || open.length > 0) {
+    return { status: 'PARTIALLY TESTED', reasons: [...unverified, ...others, ...open] };
+  }
   return { status: 'PASS', reasons: [] };
 }
 
-// Appends one run for a test case. The run is bound to the current build, so a later change makes it
-// stale. The result is one of the run states; a failure that needs confirmation is not a failure.
+// Appends one run for a test case. The run is bound to the current build and to the test case as it is
+// now, so a later change to either makes it stale. The result is one of the run states; a failure that
+// needs confirmation is not a failure.
 export function recordRun(ledger, { testCase, result, reasons = [], failures = [], evidence = [], now }) {
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('a run cannot be recorded for a refused run');
   const tc = ledger.testCases.find((t) => t.id === testCase);
@@ -150,18 +161,22 @@ export function recordRun(ledger, { testCase, result, reasons = [], failures = [
     failures,
     evidence,
     build: ledger.intake.build.treeHash,
+    testHash: testHash(tc),
     at: now,
   };
   ledger.runs.push(run);
   return run;
 }
 
-// Opens one defect for a failing test case. A test case with an open defect adds no second one.
+// Opens one defect for a failing test case. A test case with an open defect adds no second one. A
+// failure on a test case whose defect was closed opens a new defect, marked as a regression of it.
 export function recordDefect(ledger, { testCase, failures, now }) {
-  const open = ledger.defects.find((d) => (d.testCases || []).includes(testCase) && d.status !== 'Closed');
+  const open = ledger.defects.find((d) => (d.testCases || []).includes(testCase) && isOpen(d));
   if (open) return open;
   const tc = ledger.testCases.find((t) => t.id === testCase);
   if (!tc) throw new Error(`test case ${testCase} is not in the plan`);
+  const closed = ledger.defects.filter((d) => (d.testCases || []).includes(testCase) && d.disposition !== 'duplicate');
+  const latestRun = [...ledger.runs].reverse().find((run) => run.testCase === testCase);
   const defect = {
     id: `DEF-${String(ledger.defects.length + 1).padStart(3, '0')}`,
     title: tc.title || testCase,
@@ -171,10 +186,34 @@ export function recordDefect(ledger, { testCase, failures, now }) {
     requirements: tc.requirements || [],
     evidence: failures,
     detectedAt: now,
+    detectedRun: latestRun?.id ?? null,
     build: ledger.intake.build.treeHash,
+    ...(closed.length > 0 ? { regressionOf: closed[closed.length - 1].id } : {}),
+    history: [{ status: 'Confirmed', at: now, by: 'e2e-engineer', note: `${testCase} failed on build ${ledger.intake.build.treeHash}` }],
   };
   ledger.defects.push(defect);
   return defect;
+}
+
+// Records a runner's results: one run each, a defect for each confirmed failure, then the defect
+// evaluation. A failure on a test case that also passed on this build is flaky (G23): no defect is
+// opened for it, and an open defect on that test case is marked flaky for triage.
+export function recordResults(ledger, results, { now }) {
+  const opened = [];
+  const flaky = [];
+  for (const result of results) {
+    recordRun(ledger, { testCase: result.id, result: result.result, reasons: result.reasons, failures: result.failures, evidence: result.evidence, now });
+    if (testState(ledger, result.id).state === 'flaky') {
+      flaky.push(result.id);
+      continue;
+    }
+    if (result.result !== 'failed') continue;
+    const before = ledger.defects.length;
+    const defect = recordDefect(ledger, { testCase: result.id, failures: result.failures, now });
+    if (ledger.defects.length > before) opened.push(defect.id);
+  }
+  const transitions = evaluateDefects(ledger, { now });
+  return { opened, flaky, transitions };
 }
 
 function parseFlags(args) {
@@ -194,12 +233,20 @@ function parseFlags(args) {
 async function main(argv) {
   const [command, ledgerPath, ...rest] = argv;
   if (!command || !ledgerPath) {
-    throw new Error('usage: ledger.mjs <status|finish|load|add|design|freeze|approve|binary> <ledger.json> [...]');
+    throw new Error(
+      'usage: ledger.mjs <status|finish|load|add|design|freeze|approve|binary|defects|triage|review|merge|handoff|claim|evaluate> <ledger.json> [...]',
+    );
   }
   const { flags, positional } = parseFlags(rest);
   const now = new Date().toISOString();
   if (command === 'status') {
     console.log(JSON.stringify(status(readLedger(ledgerPath)), null, 2));
+    return;
+  }
+  if (command === 'defects') {
+    const ledger = readLedger(ledgerPath);
+    const view = ledger.defects.map((d) => ({ id: d.id, title: d.title, severity: d.severity, status: d.status, owner: d.owner ?? null, testCases: d.testCases, tests: d.testCases.map((id) => `${id} ${testState(ledger, id).state}`), ...(d.regression ? { regression: d.regression.status } : {}), ...(d.flaky ? { flaky: d.flaky } : {}) }));
+    console.log(JSON.stringify(view, null, 2));
     return;
   }
   if (command === 'finish') {
@@ -229,6 +276,27 @@ async function main(argv) {
   } else if (command === 'binary') {
     const [target, file] = positional;
     output = await recordBinary(ledger, { target, file, versionName: flags.version, buildNumber: flags.build, now });
+  } else if (command === 'triage') {
+    const [id] = positional;
+    output = triageDefect(ledger, id, { severity: flags.severity, owner: flags.owner, rootCause: flags['root-cause'], disposition: flags.disposition, rationale: flags.rationale, by: flags.by, now });
+  } else if (command === 'review') {
+    const [id] = positional;
+    output = reviewDefect(ledger, id, { by: flags.by, verdict: flags.verdict, severity: flags.severity, note: flags.note, now });
+  } else if (command === 'merge') {
+    const [duplicate, into] = positional;
+    output = mergeDefect(ledger, duplicate, into, { by: flags.by, note: flags.note, now });
+  } else if (command === 'handoff') {
+    const [id] = positional;
+    const packet = handOff(ledger, id, { now });
+    const file = join(dirname(ledgerPath), 'handoffs', `${packet.id}.md`);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, renderHandoff(packet));
+    output = { handoff: packet.id, owner: packet.owner, file, retest: packet.retest, regression: packet.regression };
+  } else if (command === 'claim') {
+    const [id] = positional;
+    output = claimFix(ledger, id, { by: flags.by, note: flags.note, now });
+  } else if (command === 'evaluate') {
+    output = evaluateDefects(ledger, { now });
   } else {
     throw new Error(`unknown command: ${command}`);
   }

@@ -185,10 +185,11 @@ describe('browser runs in Chromium', { skip: SKIP ?? false }, () => {
       assert.match(failure.failures[0].message, /clipped by a container that hides overflow/);
     });
 
-    test('defect 12, the small approve button, is not a defect while REQ-UI-004 is unconfirmed', () => {
+    test('defect 12, the small approve button, fails the confirmed 24-pixel minimum and opens a defect', () => {
       const run = ledger.runs.find((r) => r.testCase === 'TC-UI-04');
-      assert.equal(run.result, 'needs-confirmation');
-      assert.ok(!ledger.defects.some((d) => d.testCases.includes('TC-UI-04')));
+      assert.equal(run.result, 'failed');
+      assert.match(run.failures[0].message, /24/);
+      assert.ok(ledger.defects.some((d) => d.testCases.includes('TC-UI-04')));
     });
 
     test('the defects the passing tests show are not opened, and the cheap paths still pass', () => {
@@ -198,7 +199,7 @@ describe('browser runs in Chromium', { skip: SKIP ?? false }, () => {
 
     test('the failing web tests open one defect each, and TC-UI-08 is reported with its own step', () => {
       const ids = ledger.defects.flatMap((d) => d.testCases).sort();
-      assert.deepEqual(ids, ['TC-UI-01', 'TC-UI-02', 'TC-UI-03', 'TC-UI-05', 'TC-UI-08']);
+      assert.deepEqual(ids, ['TC-UI-01', 'TC-UI-02', 'TC-UI-03', 'TC-UI-04', 'TC-UI-05', 'TC-UI-08']);
       const create = summary.failed.find((f) => f.id === 'TC-UI-08');
       assert.match(create.failures[0].check, /step 3 \(fill\)/);
     });

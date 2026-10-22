@@ -1,0 +1,38 @@
+{
+  "testCases": [
+    {
+      "id": "TC-FLAKY-01",
+      "title": "A manager approves o-1 (planted defect 11: marked read-only, but it changes o-1)",
+      "layer": "api",
+      "mutates": false,
+      "oracle": "contract",
+      "requirements": ["REQ-APR-001"],
+      "journeys": ["J-03"],
+      "roles": ["manager"],
+      "operations": ["OP-APPROVE"],
+      "fixtures": ["FX-ORDERS-SEED"],
+      "expected": ["200 when a manager approves o-1"],
+      "automation": "implemented",
+      "checks": [
+        { "kind": "http", "as": "manager", "request": { "method": "POST", "path": "/api/orders/o-1/approve" }, "expect": { "status": 200 } }
+      ]
+    },
+    {
+      "id": "TC-FLAKY-02",
+      "title": "Order o-1 is pending before anyone approves it (shares o-1 with TC-FLAKY-01)",
+      "layer": "api",
+      "mutates": false,
+      "oracle": "contract",
+      "requirements": ["REQ-APR-001"],
+      "journeys": ["J-03"],
+      "roles": ["manager"],
+      "operations": ["OP-GET"],
+      "fixtures": ["FX-ORDERS-SEED"],
+      "expected": ["o-1 is pending"],
+      "automation": "implemented",
+      "checks": [
+        { "kind": "http", "as": "manager", "request": { "method": "GET", "path": "/api/orders/o-1" }, "expect": { "status": 200, "json": [{ "path": "order.status", "equals": "pending" }] } }
+      ]
+    }
+  ]
+}

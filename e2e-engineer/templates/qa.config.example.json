@@ -50,7 +50,11 @@
   "timezones": [
     "UTC"
   ],
-  "loadLimits": null,
+  "loadLimits": {
+    "maxVirtualUsers": 4,
+    "maxDurationSeconds": 30,
+    "maxRequestsPerSecond": 20
+  },
   "viewports": {
     "desktop": {
       "width": 1280,

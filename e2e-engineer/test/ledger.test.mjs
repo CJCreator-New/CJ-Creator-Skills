@@ -60,14 +60,18 @@ test('an allowed run with no frozen plan is blocked, and says the plan is not fr
 test('a frozen but unapproved plan is blocked, and says the plan is not approved', () => {
   const ledger = fixtureLedger();
   freezePlan(ledger, { now: NOW });
-  assert.deepEqual(status(ledger), { status: 'BLOCKED', reasons: ['the test plan is not approved'] });
+  const { status: gate, reasons } = status(ledger);
+  assert.deepEqual({ gate, reasons }, { gate: 'BLOCKED', reasons: ['the test plan is not approved'] });
 });
 
 test('an approved plan with no runs is partially tested, and every P0 journey says what is missing', () => {
   const result = status(approved());
   assert.equal(result.status, 'PARTIALLY TESTED');
-  // Four P0 journeys are unverified, and eight test cases outside them have not run (G19).
-  assert.equal(result.reasons.length, 12);
+  // Four P0 journeys are unverified, and six in-scope test cases outside them have not run (G19). The
+  // two native test cases are out of scope, so they are listed apart and do not count.
+  assert.equal(result.reasons.length, 10);
+  assert.deepEqual(result.outOfScope.map((o) => o.id), ['TC-AND-01', 'TC-IOS-01']);
+  assert.match(result.outOfScope[0].reason, /out of scope for this release/);
   assert.ok(result.reasons.some((r) => r.startsWith('P0 journey J-03 is not verified: TC-APR-01 not run')));
 });
 
@@ -78,8 +82,10 @@ test('the gate passes only when every test case of every P0 journey has a curren
   assert.equal(status(ledger).status, 'PARTIALLY TESTED');
   run(ledger, all[all.length - 1], 'passed');
   assert.ok(status(ledger).reasons.every((r) => /^TC-(SEC-\d+|UI-0[1-5]|AND-\d+|IOS-\d+) /.test(r)), JSON.stringify(status(ledger).reasons));
-  for (const tc of ledger.testCases) if (!all.includes(tc.id)) run(ledger, tc.id, 'passed');
-  assert.deepEqual(status(ledger), { status: 'PASS', reasons: [] });
+  for (const tc of ledger.testCases) if (!all.includes(tc.id) && tc.outOfScope === undefined) run(ledger, tc.id, 'passed');
+  const result = status(ledger);
+  assert.deepEqual([result.status, result.reasons], ['PASS', []]);
+  assert.equal(result.outOfScope.length, 2, 'the out-of-scope test cases are still listed on a PASS');
 });
 
 test('a failing test case gives FAIL, and FAIL takes precedence over a blocked target', () => {
@@ -87,7 +93,8 @@ test('a failing test case gives FAIL, and FAIL takes precedence over a blocked t
   freezePlan(ledger, { now: NOW });
   approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
   run(ledger, 'TC-AUTH-02', 'failed');
-  assert.deepEqual(status(ledger), { status: 'FAIL', reasons: ['TC-AUTH-02 failed'] });
+  const { status: gate, reasons } = status(ledger);
+  assert.deepEqual({ gate, reasons }, { gate: 'FAIL', reasons: ['TC-AUTH-02 failed'] });
 });
 
 test('a blocked P0 test case keeps the gate at BLOCKED, with its reason', () => {
@@ -101,7 +108,7 @@ test('a blocked P0 test case keeps the gate at BLOCKED, with its reason', () => 
 test('a run from an earlier build is stale, and it does not count toward the gate', () => {
   const ledger = approved();
   const all = Object.values(P0).flat();
-  for (const tc of ledger.testCases) run(ledger, tc.id, 'passed');
+  for (const tc of ledger.testCases) if (tc.outOfScope === undefined) run(ledger, tc.id, 'passed');
   assert.equal(status(ledger).status, 'PASS');
   ledger.intake.build.treeHash = 'a-different-tree';
   assert.equal(testState(ledger, 'TC-ORD-03').state, 'stale');
@@ -118,12 +125,43 @@ test('a run that needs confirmation is not a FAIL, and its journey is not verifi
   assert.ok(result.reasons.some((r) => r.includes('TC-APR-04 needs-confirmation')));
 });
 
-test('the latest run of a test case is the one that counts', () => {
+test('the latest run of a test case is the one that counts, across builds', () => {
   const ledger = approved();
   run(ledger, 'TC-AUTH-02', 'failed');
+  ledger.intake.build.treeHash = 'the-fixed-tree';
   run(ledger, 'TC-AUTH-02', 'passed');
   assert.equal(testState(ledger, 'TC-AUTH-02').state, 'passed');
   assert.equal(status(ledger).reasons.some((r) => r === 'TC-AUTH-02 failed'), false);
+});
+
+test('a test case that passed and failed on the same build is flaky, never passed (G23)', () => {
+  const ledger = approved();
+  run(ledger, 'TC-AUTH-02', 'passed');
+  run(ledger, 'TC-AUTH-02', 'failed');
+  const state = testState(ledger, 'TC-AUTH-02');
+  assert.equal(state.state, 'flaky');
+  assert.match(state.reasons[0], /passed and failed on the same build/);
+  const result = status(ledger);
+  assert.equal(result.status, 'PARTIALLY TESTED', 'flaky is not a FAIL and not a pass');
+  assert.ok(result.reasons.some((r) => r.includes('TC-AUTH-02 flaky')));
+});
+
+test('a run made under an earlier version of the test case is stale', () => {
+  const ledger = approved();
+  run(ledger, 'TC-AUTH-02', 'passed');
+  ledger.testCases.find((t) => t.id === 'TC-AUTH-02').expected.push('a changed expectation');
+  assert.equal(testState(ledger, 'TC-AUTH-02').state, 'stale');
+});
+
+test('an open High defect gives FAIL, even when its test case has not run on this build', () => {
+  const ledger = approved();
+  run(ledger, 'TC-ORD-03', 'failed');
+  recordDefect(ledger, { testCase: 'TC-ORD-03', failures: [], now: NOW });
+  ledger.defects[0].severity = 'High';
+  ledger.intake.build.treeHash = 'a-later-tree';
+  const result = status(ledger);
+  assert.equal(result.status, 'FAIL');
+  assert.deepEqual(result.reasons, ['DEF-001 (High) is open: Confirmed']);
 });
 
 test('a run records the build it ran on, and cannot be recorded for a refused run or an unknown test case', () => {

@@ -9,7 +9,7 @@ You verify the interface the way a user would, and you report what the page show
 
 Rules:
 
-- Run the suite only with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-web.mjs" <ledger> <config> --root <repo> --web <url> --mobile <url>`. It records each run and each defect in the ledger. Never write a result by hand.
+- Run the suite only with `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-web.mjs" <ledger> <config> --root <repo> --web <url> --mobile <url>`. It records each run and each defect in the ledger. Never write a result by hand. For a retest, the orchestrator names the test cases, and you add `--only TC-1,TC-2`.
 - Find each control by its role, name or label, as a user would. Never click by a CSS selector or a position on the page, and never call the API to set up a state the test is meant to reach through the interface.
 - A step that does not happen within the timeout is a failure. A check that cannot run is `blocked` with its reason: a missing credential, a missing browser or Playwright, an undeclared viewport. A blocked check is never a pass.
 - Before you describe a failure, open its screenshot with Read and check that the page shows what the failure says. Report what the screenshot shows, not what you expect it to show.
