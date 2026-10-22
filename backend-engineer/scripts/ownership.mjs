@@ -28,6 +28,13 @@ export function covers(entries, filePath, projectDir) {
   });
 }
 
+// Two entries overlap when they name the same path, or one is a folder that contains the other.
+export function overlaps(a, b) {
+  const x = normalizeEntry(a);
+  const y = normalizeEntry(b);
+  return x === y || (x.endsWith('/') && y.startsWith(x)) || (y.endsWith('/') && x.startsWith(y));
+}
+
 export function unionEntries(lists) {
   return [...new Set(lists.flat().filter((e) => typeof e === 'string' && e.trim() !== '').map(normalizeEntry))].sort();
 }

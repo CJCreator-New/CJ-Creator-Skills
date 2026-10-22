@@ -1,22 +1,28 @@
 #!/usr/bin/env node
 // Ledger for one backend-engineer run. It holds requirements, user journeys, UI interactions,
-// gaps, decisions, tasks and verification evidence in <project>/.claude/backend-engineer/ledger.json.
+// gaps, decisions, tasks, phases, approvals and verification evidence in
+// <project>/.claude/backend-engineer/ledger.json.
 //
 // The ledger checks what can be checked: references between records, required fields, the gap
-// lifecycle, and that a result counts only while the files it depends on are unchanged. Check
-// results and reviews are recorded here, by running the command or reading the verdict, so they
-// cannot be typed in. Journey states and the release status are computed from that evidence.
+// lifecycle, the task graph (overlapping tasks must be ordered, and dependencies must be acyclic),
+// and that a result counts only while the files it depends on are unchanged. Check runs use the
+// commands the project declared in project.commands, and the ledger runs them itself. Reviews are
+// recorded from the verdict the orchestrator gives. Journey states and the release status are
+// computed from that evidence.
 //
-// What it cannot check is whether a requirement, a journey or a review is right. Those are
-// judgments for the agents and the reviewer, and the final report must say so.
+// Writes are serialised with a lock file, and each save replaces the ledger atomically. A long
+// check runs without the lock, so it never blocks other writes.
+//
+// What the ledger cannot check is whether a requirement, a journey or a review is right. Those are
+// judgments for the agents and the reviewer, and the final report says so.
 //
 // Usage:
 //   ledger.mjs init
 //   ledger.mjs add <requirements|journeys|interactions|gaps|decisions|tasks> '<json>'
-//   ledger.mjs set <section> <id> '<json>'
+//   ledger.mjs set <section|project> [<id>] '<json>'
 //   ledger.mjs gap <id> <next-status>
-//   ledger.mjs run <name> [--scope focused|regression|e2e|full] [--journey J-01,J-02] [--gap G-01] [--cwd dir] -- <command>
-//   ledger.mjs review <passed|findings-open|rejected> [--report path] [--notes text]
+//   ledger.mjs run <name> [--scope focused|regression|e2e|full] [--journey J-01,J-02] [--gap G-01] -- <command>
+//   ledger.mjs review <passed|findings-open|rejected> [--reviewer r] [--report path] [--notes text]
 //   ledger.mjs validate
 //   ledger.mjs status
 //   ledger.mjs release
@@ -25,12 +31,13 @@
 //   ledger.mjs abort
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { pathsHash, treeHash } from './fingerprint.mjs';
-import { unionEntries } from './ownership.mjs';
+import { pathFiles, pathsHash, treeHash } from './fingerprint.mjs';
+import { overlaps, unionEntries } from './ownership.mjs';
+import { KIND_TIER } from './route.mjs';
 
 export const PREFIX = {
   requirements: 'R',
@@ -41,8 +48,11 @@ export const PREFIX = {
   tasks: 'T',
   evidence: 'E',
 };
+export const PHASES = ['discover', 'understand', 'plan', 'contract', 'implement', 'verify', 'e2e', 'review', 'deliver'];
+export const COMMAND_NAMES = ['test', 'testFocused', 'regression', 'e2e', 'lint', 'typecheck', 'build'];
 export const SOURCES = ['confirmed', 'inferred', 'proposed', 'unresolved', 'defect', 'assumption', 'out-of-scope'];
 export const PRIORITIES = ['high', 'medium', 'low'];
+export const RISKS = ['low', 'medium', 'high'];
 export const REQUIREMENT_STATUSES = ['open', 'implemented', 'not-implemented', 'out-of-scope'];
 export const CLASSIFICATIONS = ['local', 'backend'];
 export const SEVERITIES = ['Critical', 'High', 'Medium', 'Low'];
@@ -103,19 +113,25 @@ const DEFAULTS = {
 const TAIL_LINES = 40;
 const MAX_BUFFER = 64 * 1024 * 1024;
 const RUN_TIMEOUT_MS = 30 * 60 * 1000;
+const LOCK_WAIT_MS = 10_000;
+const LOCK_STALE_MS = 60_000;
+const MUTATING = new Set(['init', 'add', 'set', 'gap', 'run', 'review', 'ownership', 'finish', 'abort']);
 const USAGE =
-  'usage: ledger.mjs init | add <section> <json> | set <section> <id> <json> | gap <id> <status> | ' +
-  'run <name> [--scope s] [--journey ids] [--gap ids] [--cwd dir] -- <command> | ' +
-  'review <verdict> [--report path] [--notes text] | validate | status | release | ownership | finish | abort';
+  'usage: ledger.mjs init | add <section> <json> | set <section> [<id>] <json> | gap <id> <status> | ' +
+  'run <name> [--scope s] [--journey ids] [--gap ids] -- <command> | ' +
+  'review <verdict> [--reviewer r] [--report path] [--notes text] | validate | status | release | ownership | finish | abort';
 
 export const stateDir = (projectDir) => join(projectDir, '.claude', 'backend-engineer');
 export const ledgerPath = (projectDir) => join(stateDir(projectDir), 'ledger.json');
 export const ownershipPath = (projectDir) => join(stateDir(projectDir), 'ownership.json');
+const lockPath = (projectDir) => join(stateDir(projectDir), 'ledger.lock');
 
 export function emptyLedger() {
   return {
     counters: {},
     project: {},
+    phases: [],
+    approvals: [],
     requirements: [],
     journeys: [],
     interactions: [],
@@ -130,12 +146,50 @@ export function loadLedger(projectDir) {
   if (!existsSync(ledgerPath(projectDir))) return emptyLedger();
   const ledger = JSON.parse(readFileSync(ledgerPath(projectDir), 'utf8'));
   ledger.project ??= {};
+  ledger.phases ??= [];
+  ledger.approvals ??= [];
   return ledger;
 }
 
+// Writes to a temporary file and renames it over the ledger, so a reader never sees a partial file.
 export function saveLedger(projectDir, ledger) {
   mkdirSync(stateDir(projectDir), { recursive: true });
-  writeFileSync(ledgerPath(projectDir), `${JSON.stringify(ledger, null, 2)}\n`);
+  const temp = `${ledgerPath(projectDir)}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(ledger, null, 2)}\n`);
+  renameSync(temp, ledgerPath(projectDir));
+}
+
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+// Runs fn while holding the ledger lock. A lock older than LOCK_STALE_MS is left by a crashed
+// process and is removed. Waiting longer than LOCK_WAIT_MS is an error, not a silent skip.
+export function withLock(projectDir, fn) {
+  mkdirSync(stateDir(projectDir), { recursive: true });
+  const lock = lockPath(projectDir);
+  const started = Date.now();
+  for (;;) {
+    try {
+      writeFileSync(lock, `${process.pid}\n`, { flag: 'wx' });
+      break;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      try {
+        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
+          rmSync(lock, { force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (Date.now() - started > LOCK_WAIT_MS) throw new Error('the ledger is locked by another process; try again');
+      sleep(20);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    rmSync(lock, { force: true });
+  }
 }
 
 // Fingerprints are memoised per command, so each file is read once. Recording a result never
@@ -150,6 +204,7 @@ export function makeContext(projectDir) {
     projectDir,
     treeHash: () => once('tree', () => treeHash(projectDir)),
     pathsHash: (paths) => once(`paths:${JSON.stringify(paths)}`, () => pathsHash(projectDir, paths)),
+    pathFiles: (paths) => once(`files:${JSON.stringify(paths)}`, () => pathFiles(projectDir, paths)),
   };
   ctx.journeyHash = (journey) => ctx.pathsHash(journey.dependsOn ?? []);
   return ctx;
@@ -191,6 +246,7 @@ export function setItem(ledger, section, id, patch) {
     Object.assign(ledger.project, patch);
     return;
   }
+  if (!DEFAULTS[section]) throw new Error(`${section} cannot be set directly; use its command`);
   if ('id' in patch && patch.id !== id) throw new Error('an id cannot be changed');
   if (section === 'gaps' && 'status' in patch) throw new Error('gap status changes only through the gap command');
   Object.assign(findRequired(ledger, section, id), patch);
@@ -247,6 +303,23 @@ export function gapTransition(ledger, gap, target, ctx) {
   }
   if (target === 'Closed' && !gap.acceptance?.length) reasons.push('record acceptance criteria first');
   return { ok: reasons.length === 0, reasons };
+}
+
+// Reachability over dependsOn. reaches(a, b) is true when task a depends on task b, directly or not.
+export function taskReaches(tasks) {
+  const deps = Object.fromEntries(tasks.map((t) => [t.id, t.dependsOn ?? []]));
+  return (from, to) => {
+    const seen = new Set();
+    const stack = [...(deps[from] ?? [])];
+    while (stack.length) {
+      const id = stack.pop();
+      if (id === to) return true;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      stack.push(...(deps[id] ?? []));
+    }
+    return false;
+  };
 }
 
 export function validateLedger(ledger) {
@@ -346,12 +419,30 @@ export function validateLedger(ledger) {
     }
   }
 
-  for (const t of ledger.tasks ?? []) {
+  const tasks = ledger.tasks ?? [];
+  for (const t of tasks) {
     if (typeof t.owner !== 'string' || t.owner === '') fail(`${t.id}: owner is required`);
     if (!isStringList(t.files) || t.files.length === 0) fail(`${t.id}: files must list the paths the task owns`);
     if (!TASK_STATUSES.includes(t.status)) fail(`${t.id}: status must be one of ${TASK_STATUSES.join(', ')}`);
+    if (t.risk !== undefined && !RISKS.includes(t.risk)) fail(`${t.id}: risk must be low, medium or high`);
+    if (t.ambiguous !== undefined && typeof t.ambiguous !== 'boolean') fail(`${t.id}: ambiguous must be true or false`);
+    if (t.kind !== undefined && !Object.hasOwn(KIND_TIER, t.kind)) fail(`${t.id}: kind must be one of the route kinds`);
     refs(t.id, 'dependsOn', t.dependsOn, 'tasks');
   }
+  // The task graph. A task may not depend on itself, and two tasks that own overlapping files must
+  // be ordered by dependsOn, so that they never run in the same wave.
+  const reaches = taskReaches(tasks);
+  for (const t of tasks) {
+    if (reaches(t.id, t.id)) fail(`${t.id}: dependsOn forms a cycle`);
+  }
+  tasks.forEach((a, i) => {
+    for (const b of tasks.slice(i + 1)) {
+      const shared = (a.files ?? []).some((x) => (b.files ?? []).some((y) => overlaps(x, y)));
+      if (shared && !reaches(a.id, b.id) && !reaches(b.id, a.id)) {
+        fail(`${a.id} and ${b.id} own overlapping files and are not ordered by dependsOn`);
+      }
+    }
+  });
 
   for (const e of ledger.evidence ?? []) {
     if (e.kind === 'run') {
@@ -371,54 +462,102 @@ export function validateLedger(ledger) {
       fail(`${e.id}: kind must be run or review`);
     }
   }
+
   if (ledger.project !== undefined) {
     if (typeof ledger.project !== 'object' || Array.isArray(ledger.project)) {
       fail('project must be an object');
-    } else if (ledger.project.mode !== undefined && !MODES.includes(ledger.project.mode)) {
-      fail(`project.mode must be one of ${MODES.join(', ')}`);
+    } else {
+      if (ledger.project.mode !== undefined && !MODES.includes(ledger.project.mode)) {
+        fail(`project.mode must be one of ${MODES.join(', ')}`);
+      }
+      const commands = ledger.project.commands;
+      if (commands !== undefined) {
+        if (typeof commands !== 'object' || Array.isArray(commands)) {
+          fail('project.commands must be an object of name to command');
+        } else {
+          for (const [name, command] of Object.entries(commands)) {
+            if (!COMMAND_NAMES.includes(name)) fail(`project.commands: ${name} is not one of ${COMMAND_NAMES.join(', ')}`);
+            if (typeof command !== 'string' || command.trim() === '') fail(`project.commands.${name} must be a command`);
+          }
+        }
+      }
     }
+  }
+
+  const phases = ledger.phases ?? [];
+  if (!Array.isArray(phases)) {
+    fail('phases must be a list');
+  } else {
+    phases.forEach((p, i) => {
+      if (p?.name !== PHASES[i]) fail(`phases must be completed in order; expected ${PHASES[i]} at position ${i + 1}`);
+      if (typeof p?.completedAt !== 'string') fail(`phase ${p?.name}: completedAt is required`);
+    });
+  }
+
+  for (const a of ledger.approvals ?? []) {
+    if (a?.name !== 'contract') fail(`approvals: ${a?.name} is not an approvable artefact`);
+    if (typeof a?.file !== 'string' || typeof a?.sha256 !== 'string') fail(`approval ${a?.name}: file and sha256 are required`);
   }
   return errors;
 }
 
-export function recordRun(ledger, ctx, { name, scope, command, cwd, journeyIds = [], gapIds = [], now = () => new Date() }) {
+// Checks a run before it starts: the command must be the declared one, and each journey it is
+// linked to must name files that exist, so its evidence can ever go stale.
+export function prepareRun(ledger, ctx, { name, scope, command, journeyIds = [], gapIds = [] }) {
   if (!SCOPES.includes(scope)) throw new Error(`scope must be one of ${SCOPES.join(', ')}`);
+  const declared = ledger.project.commands?.[name];
+  if (declared === undefined) throw new Error(`"${name}" has no command in project.commands; declare it with set project first`);
+  if (declared !== command) throw new Error(`"${name}" must run its declared command: ${declared}`);
   const journeys = journeyIds.map((id) => findRequired(ledger, 'journeys', id));
   gapIds.forEach((id) => findRequired(ledger, 'gaps', id));
+  for (const j of journeys) {
+    const files = ctx.pathFiles(j.dependsOn);
+    if (files === null) throw new Error('journey evidence needs a git repository, so that its files can be fingerprinted');
+    if (files.length === 0) throw new Error(`${j.id} dependsOn matches no tracked files: ${j.dependsOn.join(', ')}`);
+  }
+  return { name, scope, command, journeyIds, gapIds, journeys, treeBefore: treeHash(ctx.projectDir), before: Object.fromEntries(journeys.map((j) => [j.id, pathsHash(ctx.projectDir, j.dependsOn)])) };
+}
 
-  const treeBefore = treeHash(ctx.projectDir);
-  const before = Object.fromEntries(journeys.map((j) => [j.id, pathsHash(ctx.projectDir, j.dependsOn)]));
+// Runs the command. The ledger is not touched, so this may take a long time without holding the lock.
+export function executeRun(prepared, { projectDir, cwd = projectDir, now = () => new Date() }) {
   const startedAt = now();
-  const result = spawnSync(command, {
+  const result = spawnSync(prepared.command, {
     cwd,
     shell: true,
     encoding: 'utf8',
     maxBuffer: MAX_BUFFER,
     timeout: RUN_TIMEOUT_MS,
   });
-  const journeyHashes = Object.fromEntries(
-    journeys.map((j) => [j.id, { before: before[j.id], after: pathsHash(ctx.projectDir, j.dependsOn) }]),
-  );
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.split('\n').slice(-TAIL_LINES).join('\n');
-  const entry = {
-    id: nextId(ledger, 'evidence'),
+  return {
     kind: 'run',
-    name,
-    scope,
-    command,
-    cwd,
+    name: prepared.name,
+    scope: prepared.scope,
+    command: prepared.command,
     exitCode: result.error ? -1 : (result.status ?? -1),
     startedAt: startedAt.toISOString(),
     durationMs: now() - startedAt,
-    treeBefore,
-    treeAfter: treeHash(ctx.projectDir),
-    journeyIds,
-    gapIds,
-    journeyHashes,
+    treeBefore: prepared.treeBefore,
+    treeAfter: treeHash(projectDir),
+    journeyIds: prepared.journeyIds,
+    gapIds: prepared.gapIds,
+    journeyHashes: Object.fromEntries(
+      prepared.journeys.map((j) => [j.id, { before: prepared.before[j.id], after: pathsHash(projectDir, j.dependsOn) }]),
+    ),
     tail: output,
   };
+}
+
+export function appendRun(ledger, measured) {
+  const entry = { id: nextId(ledger, 'evidence'), ...measured };
   ledger.evidence.push(entry);
   return entry;
+}
+
+// Convenience for tests and callers that already hold the ledger: check, run and record.
+export function recordRun(ledger, ctx, { name, scope, command, journeyIds = [], gapIds = [], now = () => new Date() }) {
+  const prepared = prepareRun(ledger, ctx, { name, scope, command, journeyIds, gapIds });
+  return appendRun(ledger, executeRun(prepared, { projectDir: ctx.projectDir, now }));
 }
 
 export function recordReview(ledger, ctx, { verdict, reviewer = 'release-reviewer', report = null, notes = '', now = () => new Date() }) {
@@ -461,6 +600,10 @@ export function releaseStatus(ledger, ctx) {
   }
 
   for (const j of ledger.journeys) {
+    const files = ctx.pathFiles(j.dependsOn);
+    if (files === null) notReady.push(`${j.id} cannot be checked: no git repository`);
+    else if (files.length === 0) notReady.push(`${j.id} dependsOn matches no tracked files: ${j.dependsOn.join(', ')}`);
+
     const state = journeyState(ledger, j, ctx);
     if (state === 'verified') continue;
     const line = `${j.id} (${j.priority} priority) is ${state}`;
@@ -516,7 +659,7 @@ export function parseRun(args) {
   const split = args.indexOf('--');
   if (split < 1 || split === args.length - 1) throw new Error(`run needs a name and a command after "--"\n${USAGE}`);
   const [name, ...flags] = args.slice(0, split);
-  const opts = { name, scope: 'focused', journeyIds: [], gapIds: [], cwd: undefined, command: args.slice(split + 1).join(' ') };
+  const opts = { name, scope: 'focused', journeyIds: [], gapIds: [], command: args.slice(split + 1).join(' ') };
   const list = (value) => value.split(',').map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < flags.length; i += 2) {
     const [flag, value] = [flags[i], flags[i + 1]];
@@ -524,7 +667,6 @@ export function parseRun(args) {
     if (flag === '--scope') opts.scope = value;
     else if (flag === '--journey') opts.journeyIds = list(value);
     else if (flag === '--gap') opts.gapIds = list(value);
-    else if (flag === '--cwd') opts.cwd = value;
     else throw new Error(`unknown run option: ${flag}`);
   }
   if (!SCOPES.includes(opts.scope)) throw new Error(`scope must be one of ${SCOPES.join(', ')}`);
@@ -532,6 +674,9 @@ export function parseRun(args) {
 }
 
 export function writeOwnership(projectDir, ledger) {
+  if (!(ledger.phases ?? []).some((p) => p.name === 'plan')) {
+    throw new Error('the ownership file is written after the plan phase is advanced: orchestrate.mjs advance plan');
+  }
   const owned = unionEntries(ledger.tasks.map((t) => t.files));
   if (owned.length === 0) throw new Error('no tasks with files; add one with "add tasks"');
   mkdirSync(stateDir(projectDir), { recursive: true });
@@ -548,16 +693,13 @@ const parseJson = (raw) => {
 };
 
 // Validates before saving, so an invalid change is never written.
-function commit(projectDir, ledger) {
+export function commit(projectDir, ledger) {
   const errors = validateLedger(ledger);
   if (errors.length) throw new Error(`change refused; the ledger would be invalid:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
   saveLedger(projectDir, ledger);
 }
 
-// Returns { code, out }. The CLI prints out and exits with code.
-export function main(argv, env = process.env) {
-  const projectDir = env.CLAUDE_PROJECT_DIR || process.cwd();
-  const [command, ...args] = argv;
+function dispatch(projectDir, command, args) {
   const ok = (out) => ({ code: 0, out: `${out}\n` });
   const json = (value) => ({ code: 0, out: `${JSON.stringify(value, null, 2)}\n` });
 
@@ -600,9 +742,16 @@ export function main(argv, env = process.env) {
     }
     case 'run': {
       const opts = parseRun(args);
-      const ledger = loadLedger(projectDir);
-      const entry = recordRun(ledger, makeContext(projectDir), { ...opts, cwd: opts.cwd ?? projectDir });
-      commit(projectDir, ledger);
+      // Validation reads the ledger without the lock. The command then runs with no lock held, and
+      // only the append takes the lock.
+      const prepared = prepareRun(loadLedger(projectDir), makeContext(projectDir), opts);
+      const measured = executeRun(prepared, { projectDir });
+      const entry = withLock(projectDir, () => {
+        const ledger = loadLedger(projectDir);
+        const appended = appendRun(ledger, measured);
+        commit(projectDir, ledger);
+        return appended;
+      });
       const status = entry.exitCode === 0 ? 'passed' : `failed (exit ${entry.exitCode})`;
       return { code: entry.exitCode === 0 ? 0 : 1, out: `${entry.id} ${opts.name} [${opts.scope}] ${status}\n${entry.tail}\n` };
     }
@@ -622,7 +771,14 @@ export function main(argv, env = process.env) {
       return ok(`${entry.id} review ${verdict}`);
     }
     case 'validate': {
-      const errors = validateLedger(loadLedger(projectDir));
+      const ledger = loadLedger(projectDir);
+      const errors = validateLedger(ledger);
+      const ctx = makeContext(projectDir);
+      for (const j of ledger.journeys) {
+        const files = ctx.pathFiles(j.dependsOn);
+        if (files === null) errors.push(`${j.id}: no git repository, so its files cannot be fingerprinted`);
+        else if (files.length === 0) errors.push(`${j.id}: dependsOn matches no tracked files: ${j.dependsOn.join(', ')}`);
+      }
       if (errors.length) return { code: 1, out: `ledger invalid:\n${errors.map((e) => `  - ${e}`).join('\n')}\n` };
       return ok('ledger valid');
     }
@@ -658,6 +814,16 @@ export function main(argv, env = process.env) {
     default:
       throw new Error(USAGE);
   }
+}
+
+// Returns { code, out }. The CLI prints out and exits with code.
+export function main(argv, env = process.env) {
+  const projectDir = env.CLAUDE_PROJECT_DIR || process.cwd();
+  const [command, ...args] = argv;
+  if (MUTATING.has(command) && command !== 'run') {
+    return withLock(projectDir, () => dispatch(projectDir, command, args));
+  }
+  return dispatch(projectDir, command, args);
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;

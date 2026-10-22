@@ -42,7 +42,11 @@ export function checkContract(ledger, openapi) {
       const responses = Object.keys(operation.responses ?? {});
       if (!responses.some((code) => code.startsWith('2'))) fail(`${label}: no success response documented`);
       if (!responses.some((code) => code.startsWith('4'))) fail(`${label}: no client error response documented`);
-      if (MUTATING.includes(method) && !('security' in operation) && operation['x-public'] !== true) {
+      // The effective security is the operation's own list, or the document's default when the
+      // operation has none. An empty list means no authentication, so it does not count as protected.
+      const security = 'security' in operation ? operation.security : openapi.security;
+      const protectedOp = Array.isArray(security) && security.length > 0;
+      if (MUTATING.includes(method) && !protectedOp && operation['x-public'] !== true) {
         fail(`${label}: a state-changing operation must declare security, or x-public: true`);
       }
       if (operation.operationId) {

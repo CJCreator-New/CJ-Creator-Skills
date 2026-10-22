@@ -1,32 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { addItem, emptyLedger, makeContext, recordReview, recordRun } from '../scripts/ledger.mjs';
+import { addItem, emptyLedger, makeContext, recordReview } from '../scripts/ledger.mjs';
 import { build, main as reportMain, parseArgs } from '../scripts/report.mjs';
 import { buildView, escapeHtml, renderDashboard, renderReport } from '../scripts/view.mjs';
-
-function withRepo(fn) {
-  const dir = mkdtempSync(join(tmpdir(), 'be-view-'));
-  try {
-    const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
-    git('init', '-q');
-    mkdirSync(join(dir, 'server'), { recursive: true });
-    writeFileSync(join(dir, 'server', 'a.ts'), 'export {};\n');
-    git('add', '.');
-    git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'base');
-    fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+import { declare, passingRun, withRepo } from './helpers.mjs';
 
 function sample(dir) {
-  const ledger = emptyLedger();
-  ledger.project = { mode: 'standard', stack: { backend: 'Express' }, limitations: ['No browser.'] };
+  const ledger = declare(emptyLedger());
+  ledger.project = { ...ledger.project, mode: 'standard', stack: { backend: 'Express' }, limitations: ['No browser.'] };
   addItem(ledger, 'requirements', { source: 'confirmed', priority: 'high', text: 'Submit works.', status: 'implemented' });
   addItem(ledger, 'journeys', {
     requirementIds: ['R-01'],
@@ -34,7 +18,7 @@ function sample(dir) {
     start: 'draft',
     steps: [{ ui: 'Submit', api: 'POST /x/:id/submit' }],
     outcomeSuccess: 'submitted',
-    dependsOn: ['server/'],
+    dependsOn: ['src/feature/'],
     priority: 'high',
   });
   addItem(ledger, 'interactions', { route: '/x', element: 'Submit', classification: 'backend', journeyId: 'J-01' });
@@ -47,9 +31,9 @@ function sample(dir) {
     journeyIds: ['J-01'],
   });
   addItem(ledger, 'decisions', { question: 'Can it be recalled?', status: 'open', blocks: [] });
-  addItem(ledger, 'tasks', { owner: 'backend-implementer', files: ['server/'], status: 'done' });
+  addItem(ledger, 'tasks', { owner: 'backend-implementer', files: ['src/feature/'], status: 'done' });
   const ctx = makeContext(dir);
-  recordRun(ledger, ctx, { name: 'test', scope: 'e2e', command: 'node -e "process.exit(0)"', cwd: dir, journeyIds: ['J-01'] });
+  passingRun(ledger, ctx, { journeyIds: ['J-01'], scope: 'e2e' });
   recordReview(ledger, ctx, { verdict: 'passed' });
   return { ledger, ctx };
 }
@@ -122,7 +106,7 @@ test('telemetry the run did not record is shown as unavailable, not estimated', 
 
 test('report.mjs writes the dashboard and the report into the run folder', () => {
   withRepo((dir) => {
-    const { ledger, ctx } = sample(dir);
+    const { ledger } = sample(dir);
     mkdirSync(join(dir, '.claude', 'backend-engineer'), { recursive: true });
     writeFileSync(join(dir, '.claude', 'backend-engineer', 'ledger.json'), JSON.stringify(ledger));
     const env = { CLAUDE_PROJECT_DIR: dir };
@@ -131,7 +115,6 @@ test('report.mjs writes the dashboard and the report into the run folder', () =>
     assert.equal(existsSync(join(dir, '.claude', 'backend-engineer', 'dashboard.html')), true);
     assert.match(readFileSync(join(dir, '.claude', 'backend-engineer', 'report.md'), 'utf8'), /Backend run report/);
     assert.equal(build({ kind: 'report', out: null }, dir).path, join(dir, '.claude', 'backend-engineer', 'report.md'));
-    assert.ok(ctx);
   });
 });
 

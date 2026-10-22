@@ -146,7 +146,28 @@ if (example) {
   }
 }
 
-// 7. No secret-bearing files inside the plugin
+// 7. Workflow scripts compile as the workflow runner evaluates them (an async body), and every
+// phase() call names a phase that the script's meta declares. Nothing is run.
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+const workflowsDir = join(PLUGIN, 'workflows');
+if (existsSync(workflowsDir)) {
+  for (const f of readdirSync(workflowsDir).filter((n) => n.endsWith('.js'))) {
+    const file = join(workflowsDir, f);
+    const source = readFileSync(file, 'utf8');
+    if (!/^export const meta = \{/m.test(source)) fail(`${rel(file)}: must begin with export const meta = {...}`);
+    try {
+      new AsyncFunction('phase', 'agent', 'parallel', 'log', 'args', source.replace(/^export const meta/m, 'const meta'));
+    } catch (err) {
+      fail(`${rel(file)}: does not compile (${err.message})`);
+    }
+    const declared = [...source.matchAll(/title:\s*'([^']+)'/g)].map((m) => m[1]);
+    for (const m of source.matchAll(/phase\('([^']+)'\)/g)) {
+      if (!declared.includes(m[1])) fail(`${rel(file)}: phase('${m[1]}') is not declared in meta.phases`);
+    }
+  }
+}
+
+// 8. No secret-bearing files inside the plugin
 const walk = (dir) =>
   readdirSync(dir).flatMap((n) => {
     const p = join(dir, n);

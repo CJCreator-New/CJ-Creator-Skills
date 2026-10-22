@@ -1,40 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
-import {
-  addItem,
-  emptyLedger,
-  loadLedger,
-  main,
-  makeContext,
-  recordReview,
-  recordRun,
-  releaseStatus,
-  validateLedger,
-} from '../scripts/ledger.mjs';
-
-function withRepo(fn) {
-  const dir = mkdtempSync(join(tmpdir(), 'be-modes-'));
-  try {
-    const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
-    git('init', '-q');
-    mkdirSync(join(dir, 'server'), { recursive: true });
-    writeFileSync(join(dir, 'server', 'a.ts'), 'export {};\n');
-    git('add', '.');
-    git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'base');
-    fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+import { addItem, emptyLedger, loadLedger, main, makeContext, recordReview, releaseStatus, validateLedger } from '../scripts/ledger.mjs';
+import { declare, passingRun, withRepo } from './helpers.mjs';
 
 function completeLedger(dir, mode = 'standard') {
-  const ledger = emptyLedger();
-  ledger.project = { mode };
+  const ledger = declare(emptyLedger());
+  ledger.project.mode = mode;
   addItem(ledger, 'requirements', { source: 'confirmed', priority: 'high', text: 'Works.', status: 'implemented' });
   addItem(ledger, 'journeys', {
     requirementIds: ['R-01'],
@@ -42,12 +13,12 @@ function completeLedger(dir, mode = 'standard') {
     start: 's',
     steps: [{ ui: 'b' }],
     outcomeSuccess: 'o',
-    dependsOn: ['server/'],
+    dependsOn: ['src/feature/'],
     priority: 'high',
   });
   const ctx = makeContext(dir);
-  recordRun(ledger, ctx, { name: 'test', scope: 'focused', command: 'node -e "process.exit(0)"', cwd: dir, journeyIds: ['J-01'] });
-  recordRun(ledger, ctx, { name: 'test', scope: 'full', command: 'node -e "process.exit(0)"', cwd: dir });
+  passingRun(ledger, ctx, { journeyIds: ['J-01'] });
+  passingRun(ledger, ctx, { scope: 'full' });
   recordReview(ledger, ctx, { verdict: 'passed' });
   return { ledger, ctx };
 }
@@ -113,4 +84,13 @@ test('review records the reviewer named on the command line', () => {
     assert.equal(review.reviewer, 'security-reviewer');
     assert.equal(review.notes, 'checked authz');
   });
+});
+
+test('the project commands are validated: only known names, and each must be a command', () => {
+  const ledger = emptyLedger();
+  ledger.project = { commands: { test: 'npm test', deploy: 'npm run deploy', lint: '' } };
+  const errors = validateLedger(ledger).join('\n');
+  assert.match(errors, /project.commands: deploy is not one of/);
+  assert.match(errors, /project.commands.lint must be a command/);
+  assert.deepEqual(validateLedger({ ...emptyLedger(), project: { commands: { test: 'npm test' } } }), []);
 });

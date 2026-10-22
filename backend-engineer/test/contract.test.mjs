@@ -53,3 +53,20 @@ test('a journey API that is not a method and path is reported', () => {
   ledger.journeys[0].steps[0].api = 'submit the form';
   assert.match(checkContract(ledger, OPENAPI).join('\n'), /is not a method and path/);
 });
+
+test('an empty security list means no authentication, so a state-changing operation is still reported', () => {
+  const doc = structuredClone(OPENAPI);
+  doc.paths['/expenses/{id}/submit'].post.security = [];
+  assert.match(checkContract(LEDGER, doc).join('\n'), /POST \/expenses\/\{id\}\/submit: a state-changing operation must declare security/);
+  doc.paths['/expenses/{id}/submit'].post['x-public'] = true;
+  assert.deepEqual(checkContract(LEDGER, doc), []);
+});
+
+test('security inherited from the document default counts for an operation that does not name its own', () => {
+  const doc = structuredClone(OPENAPI);
+  doc.security = [{ bearerAuth: [] }];
+  delete doc.paths['/expenses/{id}/submit'].post.security;
+  assert.deepEqual(checkContract(LEDGER, doc), []);
+  doc.security = [];
+  assert.match(checkContract(LEDGER, doc).join('\n'), /must declare security/);
+});

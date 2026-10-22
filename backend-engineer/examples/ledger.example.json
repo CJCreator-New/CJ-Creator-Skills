@@ -5,6 +5,15 @@
     "mode": "standard",
     "stack": { "frontend": "React and TypeScript", "backend": "Node.js and Express", "database": "PostgreSQL" },
     "capabilities": { "testDatabase": true, "runnableBackend": false, "browser": false, "externalServices": [] },
+    "commands": {
+      "test": "npm test",
+      "testFocused": "npm run test:focused",
+      "regression": "npm run test:regression",
+      "e2e": "npm run test:e2e",
+      "lint": "npm run lint",
+      "typecheck": "npm run typecheck",
+      "build": "npm run build"
+    },
     "limitations": ["No browser is available, so visual and E2E checks are not run."],
     "deployNotes": []
   },

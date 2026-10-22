@@ -6,12 +6,22 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { decide, isCommittedMigration, isSecretPath, isShellWrite, readOwnership } from '../hooks/guard.mjs';
+import {
+  decide,
+  isCommittedMigration,
+  isSecretPath,
+  isShellWrite,
+  mentionsSecret,
+  readOwnership,
+  shellTargets,
+} from '../hooks/guard.mjs';
 
 const HOOK = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/guard.mjs');
 const SUBAGENT = { agent_id: 'a1', agent_type: 'backend-engineer:backend-implementer' };
 const READ_ONLY = { agent_id: 'a2', agent_type: 'backend-engineer:security-reviewer' };
 const E2E = { agent_id: 'a3', agent_type: 'backend-engineer:e2e-verifier' };
+const NOTES = '.claude/backend-engineer/checkpoint.md';
+const LEDGER = '.claude/backend-engineer/ledger.json';
 
 function withProject(fn, { ownership, committed = [] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'be-guard-'));
@@ -38,6 +48,7 @@ function withProject(fn, { ownership, committed = [] } = {}) {
 
 const write = (filePath, cwd, extra = {}) => ({ tool_name: 'Write', tool_input: { file_path: filePath }, cwd, ...extra });
 const bash = (command, cwd, extra = {}) => ({ tool_name: 'Bash', tool_input: { command }, cwd, ...extra });
+const read = (tool, toolInput, cwd, extra = {}) => ({ tool_name: tool, tool_input: toolInput, cwd, ...extra });
 
 test('inert when no run is active and the caller is the orchestrator', () => {
   withProject((dir) => {
@@ -81,20 +92,40 @@ test('read-only agents cannot write, with a tool or the shell, with or without a
 
 test('subagents may not change the ledger, but may run, validate, status and release it', () => {
   withProject((dir) => {
-    for (const command of ['node scripts/ledger.mjs gap G-01 Closed', 'node scripts/ledger.mjs review passed', 'node scripts/ledger.mjs finish', 'node scripts/ledger.mjs set journeys J-01 {}']) {
+    for (const command of [
+      'node scripts/ledger.mjs gap G-01 Closed',
+      'node scripts/ledger.mjs review passed',
+      'node scripts/ledger.mjs finish',
+      'node scripts/ledger.mjs set journeys J-01 {}',
+      'node scripts/orchestrate.mjs advance verify',
+      'node scripts/telemetry.mjs dispatch x',
+    ]) {
       assert.equal(decide({ ...bash(command, dir), ...SUBAGENT }, {}).allow, false, command);
     }
-    for (const command of ['node scripts/ledger.mjs run test --scope focused -- "npm test"', 'node scripts/ledger.mjs validate', 'node scripts/ledger.mjs status', 'node scripts/ledger.mjs release']) {
+    for (const command of [
+      'node scripts/ledger.mjs run test --scope focused -- "npm test"',
+      'node scripts/ledger.mjs validate',
+      'node scripts/ledger.mjs status',
+      'node scripts/ledger.mjs release',
+    ]) {
       assert.equal(decide({ ...bash(command, dir), ...SUBAGENT }, {}).allow, true, command);
     }
   });
 });
 
-test('subagents may not write the run state; the orchestrator may', () => {
+test('the ledger file and its lock are never written by a tool, for anyone', () => {
   withProject((dir) => {
-    const state = '.claude/backend-engineer/ledger.json';
-    assert.equal(decide({ ...write(state, dir), ...SUBAGENT }, {}).allow, false);
-    assert.equal(decide(write(state, dir), {}).allow, true);
+    assert.equal(decide(write(LEDGER, dir), {}).allow, false);
+    assert.equal(decide({ ...write(LEDGER, dir), ...SUBAGENT }, {}).allow, false);
+    assert.match(decide(write(LEDGER, dir), {}).reason, /written only by its own commands/);
+    assert.equal(decide(write('.claude/backend-engineer/ledger.lock', dir), {}).allow, false);
+  });
+});
+
+test('subagents may not write the run state; the orchestrator may write its own notes', () => {
+  withProject((dir) => {
+    assert.equal(decide({ ...write(NOTES, dir), ...SUBAGENT }, {}).allow, false);
+    assert.equal(decide(write(NOTES, dir), {}).allow, true);
   });
 });
 
@@ -112,7 +143,7 @@ test('while a run is active, the orchestrator is held to the owned files too', (
     writeFileSync(join(dir, '.claude', 'backend-engineer', 'ownership.json'), ownership);
     assert.equal(decide(write('server/expenses/a.ts', dir), {}).allow, true);
     assert.equal(decide(write('server/other.ts', dir), {}).allow, false);
-    assert.equal(decide(write('.claude/backend-engineer/ledger.json', dir), {}).allow, true);
+    assert.equal(decide(write(NOTES, dir), {}).allow, true);
   });
 });
 
@@ -124,6 +155,82 @@ test('while a run is active, subagents may not write through the shell', () => {
     }
     assert.equal(decide({ ...bash('npm test 2>&1', dir), ...SUBAGENT }, {}).allow, true);
   }, { ownership: JSON.stringify({ owned: ['server/'] }) });
+});
+
+test('the ledger cannot be rewritten through the shell, by a subagent or by the orchestrator', () => {
+  withProject((dir) => {
+    const attacks = [
+      `echo '{}' > ${LEDGER}`,
+      `node -e "require('fs').writeFileSync('${LEDGER}', '{}')"`,
+      `python3 -c "open('${LEDGER}','w').write('{}')"`,
+      `cp /tmp/forged.json ${LEDGER}`,
+      `tee ${LEDGER}`,
+      `sed -i s/passed/x/ ${LEDGER}`,
+    ];
+    for (const command of attacks) {
+      assert.equal(decide(bash(command, dir), {}).allow, false, `orchestrator: ${command}`);
+      assert.equal(decide({ ...bash(command, dir), ...SUBAGENT }, {}).allow, false, `subagent: ${command}`);
+    }
+  });
+});
+
+test('an interpreter with inline code may not touch the run state even with no redirection', () => {
+  withProject((dir) => {
+    const command = `node -e "require('fs').unlinkSync('.claude/backend-engineer/ledger.json')"`;
+    assert.equal(decide(bash(command, dir), {}).allow, false);
+    assert.match(decide(bash(command, dir), {}).reason, /Inline interpreter code/);
+  });
+});
+
+test('shell targets are found in redirections, file operations and git writes', () => {
+  assert.deepEqual(shellTargets('echo x > .env'), ['.env']);
+  assert.deepEqual(shellTargets('echo x >> db/migrations/001.sql'), ['db/migrations/001.sql']);
+  assert.deepEqual(shellTargets('tee -a .env.local'), ['.env.local']);
+  assert.deepEqual(shellTargets('cp a.txt .env'), ['a.txt', '.env']);
+  assert.deepEqual(shellTargets('git checkout -- db/migrations/001.sql'), ['db/migrations/001.sql']);
+  assert.deepEqual(shellTargets('npm test 2>&1'), []);
+  assert.deepEqual(shellTargets('npm test >/dev/null 2>&1'), []);
+  assert.deepEqual(shellTargets('dd if=/dev/zero of=.env'), ['.env']);
+});
+
+test('shell writes to secret files are denied for every agent', () => {
+  withProject((dir) => {
+    for (const command of ['echo SECRET=1 > .env', 'tee .env.local', 'cp template .env', 'echo K=1 >> config/keys.pem']) {
+      assert.equal(decide(bash(command, dir), {}).allow, false, `orchestrator: ${command}`);
+      assert.equal(decide({ ...bash(command, dir), ...SUBAGENT }, {}).allow, false, `subagent: ${command}`);
+    }
+  });
+});
+
+test('shell writes to a committed migration are denied, a new migration is allowed', () => {
+  withProject((dir) => {
+    assert.equal(decide(bash("echo 'drop table x;' > db/migrations/001_init.sql", dir), {}).allow, false);
+    assert.equal(decide(bash("echo 'create table y();' > db/migrations/002_new.sql", dir), {}).allow, true);
+  }, { committed: ['db/migrations/001_init.sql'] });
+});
+
+test('a shell command that names a secret file, even to read it, is denied for every agent', () => {
+  withProject((dir) => {
+    assert.equal(mentionsSecret('cat .env'), true);
+    assert.equal(mentionsSecret('grep KEY .env.production'), true);
+    assert.equal(mentionsSecret('cat .env.example'), false);
+    assert.equal(decide(bash('cat .env', dir), {}).allow, false);
+    assert.equal(decide({ ...bash('grep KEY config/server.pem', dir), ...READ_ONLY }, {}).allow, false);
+    assert.equal(decide(bash('cat .env.example', dir), {}).allow, true);
+  });
+});
+
+test('Read, Grep and Glob are denied for secret files, and allowed for ordinary ones', () => {
+  withProject((dir) => {
+    assert.equal(decide(read('Read', { file_path: '.env' }, dir), {}).allow, false);
+    assert.equal(decide(read('Read', { file_path: 'config/server.pem' }, dir), {}).allow, false);
+    assert.equal(decide(read('Grep', { pattern: 'KEY', path: '.env' }, dir), {}).allow, false);
+    assert.equal(decide(read('Glob', { pattern: '**/*.pem' }, dir), {}).allow, false);
+    assert.equal(decide(read('Glob', { pattern: '.env*' }, dir), {}).allow, false);
+    assert.equal(decide(read('Read', { file_path: '.env.example' }, dir), {}).allow, true);
+    assert.equal(decide(read('Read', { file_path: 'server/envelope.ts' }, dir), {}).allow, true);
+    assert.equal(decide(read('Grep', { pattern: 'submit', path: 'server' }, dir), {}).allow, true);
+  });
 });
 
 test('readOwnership treats a malformed file as no run', () => {
