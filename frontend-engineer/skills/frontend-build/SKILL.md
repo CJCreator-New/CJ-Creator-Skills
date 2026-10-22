@@ -17,11 +17,16 @@ Read the reference files once, at the start of the stage that needs them, from t
 - `testing-and-visual-qa.md`: Stages 5 to 7, test layers, browser checks, defect triage.
 - `gates-and-reporting.md`: quality gates, completion states, telemetry, final report.
 
+In this skill, `GATES` means `node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs"`. Every gate check, check result and end-of-run step goes through it. Do not decide a gate passed by reading the state file yourself.
+
 Hard rules:
-- Never report work as verified unless you ran the check and read its actual output.
-- Never bypass a quality gate to meet a speed target. A failed gate returns work to the stage that owns it.
+- Never report work as verified unless you ran the check with `GATES run` and read its actual output.
+- A check result is recorded only by `GATES run`, which executes the command itself. Never write a pass or fail into `state.json` by hand.
+- Never bypass a gate. `GATES check <n>` is the decision. A failed gate returns the work to the stage that owns the missing item.
 - Token savings come from less rework, less repeated reading and fewer duplicate agents. Never from skipping a check.
 - Do not commit, push or open a PR unless the user asks.
+
+State: `.claude/frontend-engineer/state.json` (created by `GATES init`). You edit its `matrix`, `handoffs`, `visual`, `review`, `approval`, `limitations` and `allowedFailures` fields. `GATES` owns `packages`, `runs`, and the iteration count. The write guard blocks subagents from writing it.
 
 ## Stage 0: Preflight
 
@@ -32,10 +37,8 @@ Hard rules:
    - Design reference: a screenshot file, a URL, or a Figma link that a connected Figma tool can read. A bare Figma link without a connected tool is unavailable.
    - Browser: run `npx playwright --version` (or the configured browser command). Chromium is often preinstalled; check before relying on it.
    - Ticket or API connectors: only if connected in this session.
-5. Create `.claude/frontend-engineer/checkpoint.md` with the request, the capability results, the commands, and the status of each stage.
+5. Run `GATES init`. Create `.claude/frontend-engineer/checkpoint.md` with the request, the capability results, the commands, and the status of each stage.
 6. Start telemetry: `node "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry.mjs" start preflight`, then `end preflight` when the stage finishes. Use the same pattern for every stage.
-
-Gate 1 (ready to implement) is checked at the end of Stage 3, not here.
 
 ## Stage 1: Classify and choose the mode
 
@@ -62,11 +65,11 @@ Store both outputs in the checkpoint. Other stages read the checkpoint, not the 
 
 ## Stage 3: Specification, plan and contracts
 
-1. Build the requirement-to-code traceability matrix (format in `design-and-contracts.md`). Every requirement maps to a component, file, behavior, test and verification status.
+1. Build the requirement-to-code traceability matrix in `state.json` `matrix` (format in `design-and-contracts.md`). Every requirement has an `id`, `requirement`, `files`, `tests`, `status` and `evidence`.
 2. Define the contracts before parallel coding: props or component API, shared types, API response shapes, routes, design token names, and error conventions. Write them in the checkpoint.
 3. Split the work into work packages with one owner per file. Shared files (routes, global styles, shared types, barrel exports) have one owner, or are edited only in Stage 5. Order dependencies so that the page shell comes before the components that depend on its layout.
-4. Write `.claude/frontend-engineer/ownership.json` as `{"owned": ["src/components/Foo/", "src/pages/foo.tsx", ...]}`. It lists every path this run may write. The `guard-file-ownership` hook denies writes outside it while the file exists. Delete the file at the end of the run (Stage 9).
-5. Check Gate 1: scope understood, relevant repository inspected, design requirements documented, dependencies identified, plan defined. If a gate item is missing, return to the stage that produces it.
+4. Register each package: `GATES package <id> <path...>`, one call per package. Then run `GATES ownership`. That writes `.claude/frontend-engineer/ownership.json` from the packages. The guard denies every write outside it while it exists. It is removed in Stage 9.
+5. Run `GATES check 1`. It fails on an empty matrix, two packages owning overlapping paths, a matrix file no package owns, or an ownership file that does not match the plan. Fix the plan and check again. Do not start Stage 4 on a failing gate 1.
 
 ## Stage 4: Implement
 
@@ -76,42 +79,54 @@ Dispatch **implementer** agents in one message for work packages whose owned fil
 - its owned files and the files it may read,
 - the reference or design-spec sections it needs.
 
-Do not paste the whole spec into every agent. Implementers do not run tests. Each returns the handoff shape in its agent file. Read each returned handoff, and resolve any handoff request for another owner by assigning it, not by letting the agent edit the file.
+Do not paste the whole spec into every agent. Implementers do not run tests, and they cannot write through the shell during a run. Each returns the handoff shape in its agent file. Record each handoff request in `state.json` `handoffs` with `resolved: false`, then assign it to its owner. Mark it resolved when the change lands.
 
 ## Stage 5: Integrate and run focused checks
 
 1. Read `git diff --stat`, then the diff of each owned file. Compare it with the contracts. Fix mismatches now, not after everything has finished.
-2. Run the configured format check, lint and typecheck. Run the build when the change affects bundling, routing or imports.
-3. Check Gate 2 (ready to integrate) and Gate 3 (ready for QA): components integrated, interactions implemented, static checks run, runtime issues addressed.
+2. Run the checks with `GATES run`, one per check, so their results are recorded:
+   - `GATES run lint -- "<lint command>"`
+   - `GATES run typecheck -- "<typecheck command>"`
+   - `GATES run format -- "<format command>"` when the project has one.
+   - `GATES run build -- "<build command>"` when the change affects bundling, routing or imports.
+3. Update `state.json` `matrix` statuses as the implementation lands: `implemented` once a row's code is in place.
+4. Run `GATES check 3`. It covers gates 2 and 3: open handoffs, lint and typecheck passing against the current changes, and every row implemented. Fix what it lists, then check again.
 
 ## Stage 6: Automated tests
 
 1. Dispatch **test-author** to write requirement-driven tests for the matrix rows. It uses the project's existing test utilities and layers (see `testing-and-visual-qa.md`). It does not write tests that only restate the implementation.
-2. Run the focused tests for the changed areas. Record the exact command and the actual result.
-3. For a failing test, decide whether it is a regression or pre-existing. To check, run the same test in a temporary worktree at the base commit: `git worktree add <scratch-dir> <base-sha>`. Do not stash or reset the user's working tree.
+2. Run the focused tests for the changed areas with `GATES run test --scope focused -- "<focused command>"`. Read the output. Fix failures before continuing.
+3. Set each covered row's `tests` to the test names and its `status` to `tested`.
+4. For a failing test during the full run, decide whether it is a regression or pre-existing. For a pre-existing failure, run the same full command at the base commit in a temporary worktree, and record that run as a baseline:
+   `GATES run test --scope baseline --cwd <worktree-dir> -- "<full test command>"`.
+   Then list each pre-existing failure in `state.json` `allowedFailures` as `{ "test": "<name>", "reason": "<why it fails at the base commit>" }`. Do not stash or reset the user's working tree.
 
 ## Stage 7: Browser and visual QA loop
 
-Skip this stage only when no browser is available. In that case the report says visual verification was not performed.
+Skip this stage only when no browser is available. In that case set `visual.status` to `not performed` with the reason, and the report says so.
 
 1. Start the app with the configured dev command and wait for the configured URL.
-2. Dispatch **visual-qa** for the route at each configured viewport. It captures screenshots, measures key DOM geometry, compares them with the reference, and returns triaged defects with evidence paths.
-3. Triage defects by severity (critical, high, medium, low), in the order given in `testing-and-visual-qa.md`. Group them by root cause.
-4. Dispatch one implementer per root-cause group. Then rerun the focused tests for the affected components.
-5. Dispatch visual-qa again. Repeat until the acceptance criteria are met or `maxVisualIterations` (default 3) is reached. Record each iteration with `node "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry.mjs" iteration`.
-6. If the limit is reached, list the unresolved defects with their evidence and ask the user for a decision.
+2. Dispatch **visual-qa** for the route at each configured viewport. It captures screenshots, measures key DOM geometry, compares them with the reference, and returns triaged defects with evidence paths. Save those paths in the row's `evidence` and the viewports in `visual.viewports`.
+3. Put the defects in `visual.remaining` with their severity. Triage them by severity (critical, high, medium, low), in the order given in `testing-and-visual-qa.md`. Group them by root cause.
+4. Dispatch one implementer per root-cause group. Then rerun the focused tests for the affected components with `GATES run test --scope focused`.
+5. Before each new round, run `GATES iterate`. It counts the round and refuses past `maxVisualIterations` (default 3). Then dispatch visual-qa again. Record each round with `node "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry.mjs" iteration`.
+6. Set `visual.status` to `passing` when no critical or high defects remain, or `incomplete` when they do. If the limit is reached with defects left, list them with their evidence and ask the user for a decision. Gate 4 blocks `incomplete` while critical or high defects are listed.
 
 ## Stage 8: Independent review
 
 Dispatch **code-reviewer** with the requirement matrix, the final diff list and the test results. It does not receive the implementers' reasoning. In standard mode it reviews the diff against the matrix. In full mode it also checks architecture, accessibility, security and performance. It rejects any completion claim that the evidence does not support.
 
-Address every blocking finding and rerun the affected checks.
+Address every blocking finding and rerun the affected checks with `GATES run`. Set `review.verdict` to `passed` only when the reviewer's verdict is `passed`.
 
 ## Stage 9: Regression, final review and report
 
-1. Run the full configured test suite and the build. Record the actual output. Distinguish pre-existing failures from regressions, as in Stage 6.
+1. Run the full suite and the build with `GATES run`:
+   - `GATES run test --scope full -- "<full test command>"`
+   - `GATES run build -- "<build command>"`
+   Read the actual output. Distinguish pre-existing failures from regressions, as in Stage 6.
 2. Review the final `git diff` for unintended changes and unrelated formatting. Revert only changes this run made, and only after confirming them.
-3. Delete `.claude/frontend-engineer/ownership.json`, so the guard stops blocking edits.
-4. Check Gate 4 (ready for final review) and Gate 5 (ready for user approval) as defined in `gates-and-reporting.md`.
-5. Print the telemetry summary with `node "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry.mjs" summary`.
-6. Return the final report in the format in `gates-and-reporting.md`. Keep it short and evidence-based. Name the files changed. Do not repeat the repository layout.
+3. Run `GATES check 4`. It covers gates 3 and 4: rows tested and evidenced, the full suite and build passing against the current changes, visual status, and the review verdict. Fix what it lists, then check again.
+4. Set `approval` to `pending` and fill `limitations` with what is not verified. Run `GATES check 5`.
+5. Run `GATES finish`. It refuses unless gate 5 passes, and then removes `ownership.json`. If the run stops before this point, run `GATES abort` to remove it, so the guard stops blocking edits.
+6. Print the telemetry summary with `node "${CLAUDE_PLUGIN_ROOT}/scripts/telemetry.mjs" summary`.
+7. Return the final report in the format in `gates-and-reporting.md`. Keep it short and evidence-based. Name the files changed. Do not repeat the repository layout.

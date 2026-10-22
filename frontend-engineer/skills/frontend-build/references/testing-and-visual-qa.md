@@ -71,5 +71,9 @@ REFERENCE ANALYSIS -> IMPLEMENTATION -> AUTOMATED TESTS -> BROWSER RENDERING
 ```
 
 - Stop when the acceptance criteria are met. Do not keep polishing low-severity differences past the criteria.
-- Stop at `maxVisualIterations` (default 3). Report what remains and ask for a decision.
+- Stop at `maxVisualIterations` (default 3). `scripts/gates.mjs iterate` refuses the round after the limit. Report what remains and ask for a decision.
 - Each iteration records a `defect` entry per defect found and per defect fixed, through `scripts/telemetry.mjs`.
+
+## Pre-existing failures
+
+A full-suite failure counts against gate 4 unless it is shown to be pre-existing. Show it by running the same full command at the base commit with `gates.mjs run test --scope baseline --cwd <worktree>`, then list the failing test and a reason in `state.json` `allowedFailures`. Gate 4 accepts the failure only when the baseline also failed with the same command and every entry has a reason. The script checks that each entry has a name and a reason. It does not check that the name appears in the baseline output, so the reviewer should confirm that.

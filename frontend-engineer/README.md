@@ -66,20 +66,46 @@ frontend-engineer/
 │   ├── visual-qa.md         sonnet, browser captures and comparison, read-only
 │   └── code-reviewer.md     opus, read-only independent review
 ├── hooks/
-│   ├── hooks.json           PreToolUse on Write, Edit and MultiEdit
+│   ├── hooks.json           PreToolUse on Write, Edit, MultiEdit and Bash
 │   └── guard-file-ownership.mjs
 ├── scripts/
+│   ├── gates.mjs            gate checks, recorded check runs, iteration limit, finish and abort
+│   ├── ownership.mjs        path rules shared by the guard and the gate checks
 │   ├── telemetry.mjs        stage timings, reported tokens, defects, iterations, summary
 │   └── validate.mjs         structure checks for the plugin and its marketplace entry
 ├── examples/config.example.json
-└── test/                    guard, telemetry and structure tests
+└── test/                    guard, gates, telemetry and structure tests
 ```
+
+## Quality gates
+
+`scripts/gates.mjs` enforces the five gates. The orchestrator runs `gates.mjs check <n>` before it advances, and the check lists every failure. Check results come only from `gates.mjs run <name> -- <command>`, which executes the command and stores its exit code and output. A recorded result counts only while the working tree still matches what it ran against. A result typed into the state file does not count.
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" init
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" package p1 src/features/orders/
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" ownership
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" check 1
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" run lint -- "npm run lint"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" run test --scope full -- "npm test"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" iterate
+node "${CLAUDE_PLUGIN_ROOT}/scripts/gates.mjs" finish
+```
+
+The script decides what it can check: ownership overlaps, the matrix's file coverage, handoffs, check results and their currency, visual status against remaining defects, the iteration limit, and the review verdict. It does not decide whether a test is meaningful, whether the design matches, or whether the review is sound. Those remain judgment.
 
 ## Parallel execution and file ownership
 
-The plan gives each work package one owner per file. Shared files (routes, global styles, barrel exports, shared types) have one owner, or change only in the integration stage. Stage 3 writes the list of files the run may touch to `.claude/frontend-engineer/ownership.json`. The `guard-file-ownership` hook denies any write outside that list while the file exists. The file is deleted at the end of the run.
+The plan gives each work package one owner per file. Shared files (routes, global styles, barrel exports, shared types) have one owner, or change only in the integration stage. `gates.mjs ownership` writes the files the run may touch to `.claude/frontend-engineer/ownership.json`, generated from the packages. The `guard-file-ownership` hook then enforces that list:
 
-The hook enforces the run's list. It cannot tell which agent is writing, so the split between agents inside the list is enforced by the plan, not by the hook.
+- **Subagents may not write through the shell during a run.** Redirects (`>`, `>>`), `tee`, `cp`, `mv`, `rm`, `sed -i`, `perl -i`, `git checkout`, `git restore` and similar are denied. `2>&1` and `>/dev/null` are allowed. They must use Edit or Write, which the guard checks against the list.
+- **Subagent writes outside the list are denied,** including writes to `.claude/frontend-engineer/`, which only the orchestrator writes.
+- **The orchestrator's writes outside the list are denied** during a run, except under `.claude/frontend-engineer/`.
+- **Read-only agents (`design-analyst`, `repo-intel`, `visual-qa`, `code-reviewer`) cannot write** with a tool or through the shell, whether or not a run is active. The validator also rejects a read-only agent that lists a write tool.
+
+The run ends with `gates.mjs finish`, which removes the ownership file only after gates 4 and 5 pass. `gates.mjs abort` removes it without checks.
+
+The hook cannot tell which of several implementers is writing, so the split between them inside the list is enforced by the plan.
 
 ## Telemetry
 
@@ -125,15 +151,20 @@ Request: `Add a status filter to the orders table, match docs/design/orders-filt
 ## Limitations
 
 - The hooks and scripts are tested. The agent and skill prompts depend on the Claude Code version and the harness. Confirm them on a real run before relying on the results.
-- The ownership guard works on file paths only. It cannot tell which agent is writing.
+- The guard identifies subagents by `agent_id` and read-only agents by `agent_type` in the hook input. Neither field is confirmed for `PreToolUse` in the Claude Code version this plugin targets. If the harness omits them, subagent rules fall back to the orchestrator's rules, and read-only agents are not restricted. Check this on a real run first.
+- Shell-write detection matches common patterns. An interpreter such as `node -e`, `python -c`, or a script that writes files can still write outside the list.
+- The guard cannot tell which of several implementers is writing, so the split between them is enforced by the plan.
+- Gate checks cannot judge whether a test is meaningful, whether the design matches, or whether a review is sound. The `allowedFailures` check confirms that a reason is given, not that the test fails at the base commit.
 - Visual QA needs a browser. Without one, the run says so and does not claim visual verification.
 - Token metrics need harness support. Without it they are reported as unavailable.
 - Model routing is set in each agent's `model:` line. The plugin cannot change the session's model.
 
 ## Troubleshooting
 
-- **An edit is denied with "not in this frontend-engineer run's file list".** The run is active and the file is not in `ownership.json`. Add it to the plan if the change is needed, or report it as a handoff.
-- **Edits are still blocked after a run ends.** Delete `.claude/frontend-engineer/ownership.json`.
+- **An edit is denied with "not in this frontend-engineer run's file list".** The run is active and the file is not in `ownership.json`. Add it to the plan with `gates.mjs package` and run `gates.mjs ownership`, or report it as a handoff.
+- **A subagent's shell command is denied with "Shell writes are blocked".** Subagents write with Edit or Write during a run. Redirect output to `/dev/null` or use `2>&1` for logs.
+- **Edits are still blocked after a run ends.** Run `gates.mjs abort`, or delete `.claude/frontend-engineer/ownership.json`.
+- **`gates.mjs check` fails on "passed, but the changes were modified after it ran".** Run the check again after the last edit.
 - **Visual verification says "not performed".** Install Playwright and Chromium, or set the browser command in `config.json`.
 - **`validate.mjs` fails.** The message names the file and the rule.
 

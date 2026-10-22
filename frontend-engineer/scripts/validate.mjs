@@ -7,6 +7,8 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { READ_ONLY_AGENTS } from '../hooks/guard-file-ownership.mjs';
+
 const PLUGIN = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The marketplace is the nearest ancestor folder holding .claude-plugin/marketplace.json.
@@ -94,6 +96,12 @@ for (const f of readdirSync(agentsDir).filter((n) => n.endsWith('.md'))) {
   if (!fields.tools) fail(`${rel(file)}: tools is required (least privilege)`);
   if (!MODELS.has(fields.model)) fail(`${rel(file)}: model must be one of ${[...MODELS].join(', ')}`);
   if (body.trim().length < 100) fail(`${rel(file)}: body is too short to be an agent prompt`);
+  if (READ_ONLY_AGENTS.has(fields.name) && /\b(Write|Edit|MultiEdit)\b/.test(fields.tools ?? '')) {
+    fail(`${rel(file)}: read-only agent must not list Write, Edit or MultiEdit`);
+  }
+}
+for (const name of READ_ONLY_AGENTS) {
+  if (!existsSync(join(agentsDir, `${name}.md`))) fail(`guard-file-ownership.mjs: read-only agent ${name} has no file`);
 }
 
 // 5. Hooks: each command references an existing script under the plugin root
