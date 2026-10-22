@@ -1,4 +1,4 @@
-# QA Engineer plugin: gap analysis and build plan
+# End-to-end engineer plugin: gap analysis and build plan
 
 Date: 2026-10-22. Branch: `ccr-5aa52e04-myjgjf`.
 
@@ -6,24 +6,26 @@ This is a planning document. No plugin code exists yet. It reviews the master bu
 
 ## 1. Reading of the request
 
-- The master prompt describes a multi-agent QA plugin: discover the app, plan, generate artifacts, run browser, API and RBAC tests in parallel, triage defects, retest fixes, and report a release status.
-- "Add another skill for the backend" is read as a new plugin, `qa-engineer`, in this marketplace. Its backend verification is a skill named `qa-backend`. If you meant a skill inside `backend-engineer`, sections 4 and 5 still apply. Only the plugin boundary changes.
+- The plugin is for end-to-end testing. It is a new, separate plugin in this marketplace, named `e2e-engineer`. It is not a skill inside `backend-engineer`.
+- The master prompt describes the workflow: discover the app, plan, generate artifacts, run browser, API and RBAC tests in parallel, triage defects, retest fixes, and report a release status.
+- Scope follows from the E2E focus. The user journey is the unit of verification. Each journey is run through the UI, through the API, and into the database. RBAC matters here as journey branches, so the role matrix stays. Load testing and standalone accessibility audits are secondary lanes, not the centre of v1.
+- "Backend" appears in the plan only as the `e2e-backend` skill, which covers the API and data legs of each journey. It is not a separate backend plugin.
 - Every decision below has a default. The defaults are listed in section 4 so you can reverse any of them. None of them blocks the plan.
 
 ## 2. What already exists
 
-This repo has four plugins. Three of them overlap with the QA plugin.
+This repo has four plugins. Three of them overlap with the E2E plugin.
 
-| Prompt need | Existing in this repo | How the QA plugin relates |
+| Prompt need | Existing in this repo | How the E2E plugin relates |
 | --- | --- | --- |
 | Journey and requirement reconstruction | `backend-engineer`: `requirements-analyst`, `flow-intelligence` reference | Separate analysis, independent of the builder. The builder's output is read as a claim, never as evidence. |
-| API, E2E and security verification | `backend-engineer`: `e2e-verifier`, `test-engineer`, `security-reviewer` | `qa-backend`, `e2e-runner` and `rbac-analyst` verify the running system without trusting the builder's runs. |
+| API, E2E and security verification | `backend-engineer`: `e2e-verifier`, `test-engineer`, `security-reviewer` | `e2e-backend`, `e2e-runner` and `rbac-analyst` verify the running system without trusting the builder's runs. `e2e-verifier` is the closest overlap, so the two are kept apart on purpose. |
 | Visual QA at viewports | `frontend-engineer`: `visual-qa` | `ux-analyst` (static spec) and `ui-runner` (runtime). The viewport-list convention is reused. |
 | Evidence ledger that runs only declared commands | `backend-engineer/scripts/ledger.mjs` (980 lines) | The pattern is copied, not the file. See the constraint below. |
 | Model routing and telemetry | `backend-engineer/scripts/route.mjs`, `telemetry.mjs` | Copied, with the same tier names. |
 | Release status from evidence | `backend-engineer` `LEDGER release` | Replaced by the QA gate rules in G19, which the master prompt needs and the backend status does not cover. |
 
-**Constraint: plugins cannot share code.** Each plugin is installed on its own, and no plugin in this repo refers to a path outside its own folder. The QA plugin therefore copies the fingerprint and command-runner logic. A repo-level test in `tests/` asserts that the copies stay identical to their source, so they cannot drift silently.
+**Constraint: plugins cannot share code.** Each plugin is installed on its own, and no plugin in this repo refers to a path outside its own folder. The E2E plugin therefore copies the fingerprint and command-runner logic. A repo-level test in `tests/` asserts that the copies stay identical to their source, so they cannot drift silently.
 
 ## 3. Gap register
 
@@ -55,11 +57,11 @@ Each row names the prompt section, the gap, and how the plan resolves it. "Decis
 | # | § | Gap | Resolution | Decision |
 | --- | --- | --- | --- | --- |
 | G12 | 3, 11 | "Dedicated test environment" is not defined, so nothing can prove it. | A target allowlist in config: hosts and a database name pattern. Before any write, `env-data validate` checks the host, the database name and a run-marker row. Any mismatch stops the run. Production-looking hostnames are refused by default. | No |
-| G13 | 8, 9 | Security probes (CSRF, injection, rate limit, session) need an authorization statement. | Config records `authorization: {scope, authorizedBy, date}`. Without it, `qa-backend` runs static security checks only. Probes use non-destructive marker payloads, only against allowlisted hosts. Rate-limit tests stay within a declared limit. | D4 |
+| G13 | 8, 9 | Security probes (CSRF, injection, rate limit, session) need an authorization statement. | Config records `authorization: {scope, authorizedBy, date}`. Without it, `e2e-backend` runs static security checks only. Probes use non-destructive marker payloads, only against allowlisted hosts. Rate-limit tests stay within a declared limit. | D4 |
 | G14 | 3, 11 | Destructive operations are allowed "with explicit authorization", but the prompt does not say who gives it. | `allowReset: false` by default. Seed and reset need `allowReset: true` and a passing target validation. | No |
 | G15 | 3 | Test credentials are not addressed. | Config names environment variables. Generated test passwords go to a gitignored file and are never printed. Reports refer to accounts by role ID only. | No |
 | G16 | 13, 15 | Traces, HAR files and screenshots capture cookies, tokens and personal data. | The evidence pipeline redacts auth headers, cookies and token-like values before writing. Evidence has a retention cap. | No |
-| G17 | 19 | The prompt says not to commit credentials, but its artifact tree sits inside the repo. | Evidence goes to `.claude/qa-engineer/`. The plugin adds that folder to the target's `.gitignore`, with consent. `qa-artifacts/` is written only on request, text only by default. | No |
+| G17 | 19 | The prompt says not to commit credentials, but its artifact tree sits inside the repo. | Evidence goes to `.claude/e2e-engineer/`. The plugin adds that folder to the target's `.gitignore`, with consent. `qa-artifacts/` is written only on request, text only by default. | No |
 
 ### Approvals and gates
 
@@ -114,7 +116,7 @@ These are the choices that need your confirmation. The plan proceeds on the defa
 
 | ID | Question | Default used |
 | --- | --- | --- |
-| D1 | New plugin `qa-engineer`, or a skill inside `backend-engineer`? | New plugin. Its backend skill is `qa-backend`. |
+| D1 | New plugin `e2e-engineer`, or a skill inside `backend-engineer`? | **Resolved: a separate new plugin, confirmed by the user.** Its API and data skill is `e2e-backend`. |
 | D2 | Is native mobile or desktop in scope? | No. Web app in browsers and responsive viewports only. |
 | D3 | Will you connect Figma? | No. Design references come from exports and tokens. Visual parity is `not performed` without them. |
 | D4 | Who approves the test plan, accepts risk, and authorizes security probes? | You, in the session. Each approval is recorded with your name and the plan's hash. |
@@ -125,14 +127,14 @@ These are the choices that need your confirmation. The plan proceeds on the defa
 ### Layout
 
 ```
-qa-engineer/
+e2e-engineer/
   .claude-plugin/plugin.json
   README.md
   skills/
-    qa-campaign/   orchestrator: the full lifecycle, user-invoked
-    qa-backend/    API, data, RBAC runtime, concurrency, security probes
-    qa-ui/         browser, responsive viewports, accessibility, console and network capture
-  agents/          repo-intel, flow-analyst, ux-analyst, rbac-analyst, qa-strategist,
+    e2e-campaign/  orchestrator: the full lifecycle, user-invoked
+    e2e-backend/   API, data, RBAC runtime, concurrency, security probes for each journey
+    e2e-ui/        browser journeys, responsive viewports, accessibility, console and network capture
+  agents/          repo-intel, flow-analyst, ux-analyst, rbac-analyst, test-strategist,
                    env-data, ui-runner, api-runner, e2e-runner, perf-runner, triage
   hooks/           guard.mjs: denies writes to application source; denies writes to a target not validated
   scripts/         ledger.mjs, safety.mjs (allowlist and probes), fingerprint.mjs, route.mjs,
@@ -146,12 +148,12 @@ qa-engineer/
 
 | Prompt agent | Plan role | Tier | Writes | Status |
 | --- | --- | --- | --- | --- |
-| 1 QA Orchestrator | `qa-campaign` skill (the main session) | strong | ledger only | Kept (G6) |
+| 1 QA Orchestrator | `e2e-campaign` skill (the main session) | strong | ledger only | Kept (G6) |
 | 2 Repository intelligence | `repo-intel` | efficient | nothing | Kept |
 | 3 UI/UX and visual | `ux-analyst` (static) + `ui-runner` (runtime) | strong / efficient | nothing / evidence | Split (G8) |
 | 4 User flow and business logic | `flow-analyst` | strong | nothing | Kept |
 | 5 RBAC and security | `rbac-analyst` (static) + `api-runner` (runtime probes) | strong | nothing / evidence | Split (G8) |
-| 6 Strategy and documentation | `qa-strategist` | strong | `qa-artifacts/` drafts | Kept |
+| 6 Strategy and documentation | `test-strategist` | strong | `qa-artifacts/` drafts | Kept |
 | 7 Mock data and environment | `env-data` | efficient | QA-owned scripts and fixtures | Kept |
 | 8 UI automation | `ui-runner` | efficient | tests it owns, evidence | Kept |
 | 9 API, backend and data | `api-runner` | efficient | tests it owns, evidence | Kept |
@@ -195,7 +197,7 @@ Gate status follows the precedence in G19.
 0. Intake and safety: read `qa.config.json`, check the target allowlist, probe the environment and the browser, record the build ID. Checkpoint: safety passes, or the run stops.
 1. Repository reconnaissance (`repo-intel`).
 2. Flow and oracle discovery (`flow-analyst`, `ux-analyst`, `rbac-analyst`, in parallel).
-3. Risk analysis and strategy (`qa-strategist`).
+3. Risk analysis and strategy (`test-strategist`).
 4. **Checkpoint: plan approval.** The plan is frozen with a hash. Execution cannot start until the decision is recorded.
 5. Environment preparation (`env-data`), in series.
 6. Execution in waves. Read-only lanes run in parallel: `api-runner` reads, `ui-runner` views, accessibility scans. Mutating lanes run in series: `api-runner` writes, `e2e-runner`.
@@ -238,9 +240,9 @@ The clean control runs the same suite. It must produce zero defects. A finding o
 | Version | Scope | Exit criteria |
 | --- | --- | --- |
 | v0.1 Foundation | Plugin skeleton. Config and target allowlist. Ledger. Build ID. Intake and capability probe. `repo-intel`. Planted-app fixture and clean control. Marketplace entry added once it validates. | Safety refusals are tested: wrong host, wrong database, missing authorization, production-like name. The planted app is mapped. |
-| v0.2 Documentation | `flow-analyst`, `ux-analyst`, `rbac-analyst`, `qa-strategist`. Artifact files 00 to 11. Plan approval with hash. | Every test case has an oracle. Requirement traceability validates. The plan hash changes when the plan changes. |
-| v0.3 Backend execution | `env-data` (seed, reset, validate). `api-runner` and `qa-backend`. Runtime RBAC probes. Concurrency lane. | Planted defects 2, 3, 4, 6 and 7 are reproduced. The clean control has zero findings. |
-| v0.4 Browser execution | `ui-runner` and `qa-ui`. Golden paths. Responsive viewports. Accessibility scan. Redacted traces. | Planted defects 1, 8, 9 and 10 are found. A redaction test shows no cookies or tokens in stored evidence. |
+| v0.2 Documentation | `flow-analyst`, `ux-analyst`, `rbac-analyst`, `test-strategist`. Artifact files 00 to 11. Plan approval with hash. | Every test case has an oracle. Requirement traceability validates. The plan hash changes when the plan changes. |
+| v0.3 Backend execution | `env-data` (seed, reset, validate). `api-runner` and `e2e-backend`. Runtime RBAC probes. Concurrency lane. | Planted defects 2, 3, 4, 6 and 7 are reproduced. The clean control has zero findings. |
+| v0.4 Browser execution | `ui-runner` and `e2e-ui`. Golden paths. Responsive viewports. Accessibility scan. Redacted traces. | Planted defects 1, 8, 9 and 10 are found. A redaction test shows no cookies or tokens in stored evidence. |
 | v0.5 Remediation loop | `triage`, handoff packets, retest by test ID, regression and stale-evidence tracking. `perf-runner`, opt-in with limits. | A fix is retested, and the defect closes only after the regression run passes. A stale run is reported as stale. |
 | v1.0 Release | `e2e-runner` (cross-layer), final report, gate evaluation, self-test suite, README, install scripts updated. | All 11 planted defects found, the clean control clean, and the self-tests pass. The report reproduces from the ledger. |
 
@@ -254,7 +256,7 @@ The clean control runs the same suite. It must produce zero defects. A finding o
 
 ## 9. Next steps
 
-1. Confirm or reverse D1 to D5. If you change none, v0.1 starts on the defaults.
+1. D1 is settled: a separate plugin. Confirm or reverse D2 to D5. If you change none, v0.1 starts on those defaults.
 2. Build v0.1, including the planted-app fixture and the safety tests, before any agent prompts are written.
-3. Add `qa-engineer` to the marketplace and the installers once v0.1 validates.
+3. Add `e2e-engineer` to the marketplace and the installers once v0.1 validates.
 4. Fix the `install.ps1` drift separately.
