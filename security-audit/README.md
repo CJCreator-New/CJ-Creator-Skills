@@ -110,7 +110,7 @@ an indirect route such as a build step. The read-only rule for agents also rests
 
 ```
 node security-audit/scripts/validate.mjs
-node --test security-audit/test/
+node --test security-audit/test/plugin-structure.test.mjs security-audit/test/guard-readonly.test.mjs
 claude plugin validate security-audit
 ```
 

@@ -27,7 +27,7 @@ The skill is invoked explicitly, because a full run dispatches several agents:
 /frontend-engineer:frontend-build Build the dashboard page from docs/design/dashboard.png
 /frontend-engineer:frontend-build Add a status filter to the orders table, match the existing filter bar
 /frontend-engineer:frontend-build Fix the header overflow on mobile (visual-fix, reference: docs/design/header.png)
-/frontend-engineer:frontend-build Review the checkout form for accessibility (review only)
+/frontend-engineer:accessibility-audit checkout form
 ```
 
 Optional project settings go in `.claude/frontend-engineer/config.json`. Start from `examples/config.example.json`: dev server command and URL, the project's check commands, viewports, the visual iteration limit, and the design reference. Anything missing is detected from `package.json`, or reported as unavailable.
