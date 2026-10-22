@@ -565,13 +565,18 @@
       ],
       "requirements": [
         "REQ-UI-004",
-        "REQ-UI-005"
+        "REQ-UI-005",
+        "REQ-AUTH-001"
       ],
       "branches": [
         {
           "kind": "success",
           "summary": "the table and the approve control work at phone widths"
         }
+      ],
+      "operations": [
+        "OP-LOGIN",
+        "OP-LIST"
       ]
     },
     {
@@ -1586,7 +1591,28 @@
         "android:usesCleartextTraffic is false",
         "no hardcoded key in the resources"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "static",
+          "check": "manifest-attribute",
+          "file": "AndroidManifest.xml",
+          "attribute": "android:debuggable",
+          "equals": "false"
+        },
+        {
+          "kind": "static",
+          "check": "manifest-attribute",
+          "file": "AndroidManifest.xml",
+          "attribute": "android:usesCleartextTraffic",
+          "equals": "false"
+        },
+        {
+          "kind": "static",
+          "check": "no-hardcoded-secret",
+          "file": "res/values/strings.xml"
+        }
+      ]
     },
     {
       "id": "TC-UI-09",
@@ -1643,6 +1669,74 @@
           "act": "expectTestId",
           "testId": "approvals",
           "text": "Approvals: 1"
+        }
+      ]
+    },
+    {
+      "id": "TC-AND-01",
+      "title": "Sign in on Android and see the orders",
+      "layer": "android",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-AUTH-001"
+      ],
+      "journeys": [
+        "J-07"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-LOGIN",
+        "OP-LIST"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "the app signs in with the manager account and lists the orders"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "flow",
+          "target": "android",
+          "flow": "sign-in-and-list"
+        }
+      ]
+    },
+    {
+      "id": "TC-IOS-01",
+      "title": "Sign in on iOS and see the orders",
+      "layer": "ios",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-AUTH-001"
+      ],
+      "journeys": [
+        "J-07"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-LOGIN",
+        "OP-LIST"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "the app signs in with the manager account and lists the orders"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "flow",
+          "target": "ios",
+          "flow": "sign-in-and-list"
         }
       ]
     }

@@ -2,7 +2,7 @@
 
 End-to-end testing for an application, built from its user journeys. It discovers the screens, the API and the database, plans the journeys behind an approval gate, then verifies them through the browser, mobile web, native Android and iOS, the API and the data layer. It reports a release status from evidence, not from test counts.
 
-**Version 0.4 (browser checks).** Builds on v0.1 to v0.3:
+**Version 0.5 (mobile checks).** Builds on v0.1 to v0.4:
 
 - **Intake and safety.** The run is refused unless every target, host, package, bundle and database is on the config allowlist. Production-looking names are refused without an override. Security probes are refused unless authorization is recorded.
 - **Build identity and tool readiness.** The commit and a fingerprint of the working tree. Native binaries are identified by their SHA-256. A target whose tools are missing is `blocked` with the reason. Nothing is installed.
@@ -13,6 +13,7 @@ End-to-end testing for an application, built from its user journeys. It discover
 - **API runner (`run-api.mjs`).** Runs the implemented api and db test cases against a target. Each mutating case starts from a fresh seed. Each run is recorded against the current build, and each confirmed failure opens one defect. A derived, unconfirmed requirement's failure is `needs-confirmation`, not a defect.
 - **Browser runner (`run-web.mjs`).** Drives the web and mobile-web test cases in Chromium, through the interface only: each control is found by its role, name or label, and the database is reset before each test case. Steps cover sign-in, fills, clicks, downloads, intercepted failures, viewport clipping, touch-target size and a built-in accessibility scan. Each test case stores a screenshot and a redacted log.
 - **Redaction (`redact.mjs`).** Every stored value is redacted before it is written: credential headers, credential keys at any depth, bearer and token-shaped strings, and every password value the run was given. Playwright traces are not stored, because they carry credentials that cannot be reliably removed.
+- **Mobile checks (`run-mobile.mjs`).** Static checks read the Android project's manifest and resources, with no device: a debuggable application or a hardcoded secret fails, and a secret is reported by its file and name, never by its value. Native Android and iOS cases run Maestro flows on an attached device or simulator. Each native run uses the binary recorded in the ledger, and that binary must match the build handover hash in the config. A missing device, tool, binary, flow or mismatch blocks the case, with the reason.
 - **Gate.** A P0 journey is verified only when every test case linked to it has a current pass. A run from an earlier build is stale. Precedence: FAIL, then BLOCKED, then PARTIALLY TESTED, then PASS.
 - **Guard.** While a run is active, a write is allowed only under `.claude/e2e-engineer/`, the ledger is never written by a tool, secret files are never written, and the analysts are read-only.
 - **Planted-app fixture.** A small order-approval app on SQLite, with 11 switchable app-side defects, and a clean control (`PLANTED=none`). The worked plan has 15 requirements, 9 journeys and 18 test cases, of which 10 are implemented as executable checks.
@@ -28,7 +29,7 @@ hooks/
   guard.mjs                       the guard: inert unless a run is active
 skills/e2e-engineer/SKILL.md      the skill: the v0.3 steps
 skills/e2e-engineer/references/   discovery and oracles, design references, strategy and approval,
-                                  backend verification, web verification, reporting and gates
+                                  backend verification, web verification, mobile verification, reporting and gates
 agents/
   repo-intel.md                   maps the application (read-only)
   flow-analyst.md                 journeys, branches, requirements (read-only)
@@ -38,6 +39,7 @@ agents/
   env-data.md                     prepares the test database (writes through env.mjs)
   api-runner.md                   runs the API and data checks (writes through run-api.mjs)
   web-runner.md                   drives the browser (writes through run-web.mjs)
+  mobile-runner.md                runs the static and native mobile checks (writes through run-mobile.mjs)
 scripts/
   intake.mjs                      intake: safety, build identity, probes, ledger, active marker
   safety.mjs                      target allowlist, production refusal, authorization, reset rules
@@ -50,6 +52,8 @@ scripts/
   env.mjs                         validate, seed and reset the test database
   run-api.mjs                     runs the api and db test cases and records the results
   run-web.mjs                     drives the web and mobile-web test cases in Chromium and records them
+  run-mobile.mjs                  runs the static and native mobile test cases and records them
+  native.mjs                      static checks on the Android project, and Maestro flow checks with the build-handover check
   web-steps.mjs                   the step vocabulary for browser test cases, checked at plan time
   browser.mjs                     finds Playwright in the repository, or at the configured path; never installs it
   redact.mjs                      redaction of credentials, tokens and cookies from stored values
@@ -82,6 +86,9 @@ node e2e-engineer/scripts/ledger.mjs approve .claude/e2e-engineer/ledger.json --
 node e2e-engineer/scripts/env.mjs validate qa.config.json --root .
 node e2e-engineer/scripts/env.mjs seed     qa.config.json --root .
 
+# Mobile: static checks on the Android project, and native flows on a device or simulator
+node e2e-engineer/scripts/run-mobile.mjs .claude/e2e-engineer/ledger.json qa.config.json --root .
+
 # Run the API and data checks against a running target
 node e2e-engineer/scripts/run-api.mjs .claude/e2e-engineer/ledger.json qa.config.json --root . --base http://127.0.0.1:4173
 
@@ -113,10 +120,12 @@ Run against the clean control, the API suite passes 10 of 10 and the browser sui
 - `PARTIALLY TESTED` until every test case of every P0 journey has a current pass.
 - `PASS` otherwise.
 
-## Limits in v0.4
+## Limits in v0.5
 
 - The analysts are prompts. Their output on a real repository has not been run here. The worked plan is hand-written in the shape they return.
-- Native Android and iOS, and the static checks, remain `planned` until v0.5. Mobile web runs in Chromium with device emulation, not on a phone.
+- Previous-version compatibility, the platform accessibility tree, and the device matrix are not run yet. They need more devices and tools than this version uses.
+- iOS flows run only on a simulator where the app is already installed. The runner installs Android binaries only.
+- The fixture is a web app, so it has no native build. The native flow in the fixture is an example of the shape, and it cannot run here. Native cases on the fixture are blocked, with the reason, and the device path is covered by tests that inject a fake command runner.
 - Playwright is not installed by the plugin. It comes from the target repository, or from `browser.playwrightModule` in the config. Without it, the web targets are blocked, with the reason.
 - The built-in accessibility rules are limited to form-field names and button names. A fuller scan is a later addition.
 - The guard is a workflow guard, not a sandbox. It checks tool writes, not shell commands, so a shell redirection can still write a file it does not name.

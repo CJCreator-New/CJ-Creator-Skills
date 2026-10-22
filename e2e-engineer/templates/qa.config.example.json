@@ -11,13 +11,20 @@
       "packageName": "com.example.orders",
       "binary": "builds/orders.apk",
       "versionName": "1.0.0",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "binarySha256": "<sha256 from the build handover, optional>",
+      "flows": {
+        "sign-in-and-list": "flows/sign-in-and-list.yaml"
+      }
     },
     "ios": {
       "bundleId": "com.example.orders",
       "binary": "builds/Orders.ipa",
       "versionName": "1.0.0",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "flows": {
+        "sign-in-and-list": "flows/sign-in-and-list.yaml"
+      }
     }
   },
   "start": "node server.mjs",
@@ -57,5 +64,8 @@
       "width": 320,
       "height": 640
     }
+  },
+  "mobileProjects": {
+    "android": "app/android"
   }
 }

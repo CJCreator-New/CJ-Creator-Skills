@@ -74,7 +74,7 @@ test('loadPlan reads each section into its collection and rejects an unknown sec
   const ledger = fixtureLedger();
   const plain = { ...emptyLedger(), intake: ledger.intake };
   const counts = loadPlan(plain, readFixturePlan());
-  assert.equal(counts.testCases, 19);
+  assert.equal(counts.testCases, 21);
   assert.equal(counts.journeys, 9);
   assert.throws(() => loadPlan(plain, { mystery: [] }), /unknown plan section mystery/);
 });
@@ -88,6 +88,6 @@ test('the fixture plan loads with every collection populated', () => {
   const ledger = fixtureLedger();
   assert.equal(ledger.requirements.length, 15);
   assert.equal(ledger.journeys.length, 9);
-  assert.equal(ledger.testCases.length, 19);
+  assert.equal(ledger.testCases.length, 21);
   assert.equal(clone(ledger.designMap).source, 'none');
 });

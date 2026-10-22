@@ -1,0 +1,16 @@
+# Example Maestro flow for the native sign-in test case (TC-AND-01 and TC-IOS-01).
+# It names the app's bundle or package and reads the credentials from the environment, so no secret is
+# written in this file. Run it with: maestro test -e E2E_MANAGER_USERNAME=... -e E2E_MANAGER_PASSWORD=...
+# The fixture itself is a web app, so this flow only shows the shape: a real native build is needed to run it.
+appId: com.example.orders
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "username"
+- inputText: ${E2E_MANAGER_USERNAME}
+- tapOn:
+    id: "password"
+- inputText: ${E2E_MANAGER_PASSWORD}
+- tapOn: "Sign in"
+- assertVisible: "Orders"

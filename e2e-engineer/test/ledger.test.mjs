@@ -66,8 +66,8 @@ test('a frozen but unapproved plan is blocked, and says the plan is not approved
 test('an approved plan with no runs is partially tested, and every P0 journey says what is missing', () => {
   const result = status(approved());
   assert.equal(result.status, 'PARTIALLY TESTED');
-  // Four P0 journeys are unverified, and six planned test cases outside them have not run (G19).
-  assert.equal(result.reasons.length, 10);
+  // Four P0 journeys are unverified, and eight test cases outside them have not run (G19).
+  assert.equal(result.reasons.length, 12);
   assert.ok(result.reasons.some((r) => r.startsWith('P0 journey J-03 is not verified: TC-APR-01 not run')));
 });
 
@@ -77,7 +77,7 @@ test('the gate passes only when every test case of every P0 journey has a curren
   for (const id of all.slice(0, -1)) run(ledger, id, 'passed');
   assert.equal(status(ledger).status, 'PARTIALLY TESTED');
   run(ledger, all[all.length - 1], 'passed');
-  assert.ok(status(ledger).reasons.every((r) => /^TC-(SEC-\d+|UI-0[1-5]) /.test(r)), JSON.stringify(status(ledger).reasons));
+  assert.ok(status(ledger).reasons.every((r) => /^TC-(SEC-\d+|UI-0[1-5]|AND-\d+|IOS-\d+) /.test(r)), JSON.stringify(status(ledger).reasons));
   for (const tc of ledger.testCases) if (!all.includes(tc.id)) run(ledger, tc.id, 'passed');
   assert.deepEqual(status(ledger), { status: 'PASS', reasons: [] });
 });
