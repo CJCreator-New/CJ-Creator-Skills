@@ -28,7 +28,7 @@
 // directory-wide search can still return the contents of a secret file it does not name.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -64,7 +64,7 @@ const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 // The plugin's own commands, which may touch the state. A subagent may only read and run the ledger.
 const SANCTIONED =
-  /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*node\s+(?:\S*\/)?(ledger|telemetry|report|route|contract|orchestrate)\.mjs(?=\s|$)/;
+  /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*node\s+(?:\S*\/)?(ledger|telemetry|report|route|contract|orchestrate|inventory)\.mjs(?=\s|$)/;
 const SUBAGENT_SANCTIONED = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*node\s+(?:\S*\/)?ledger\.mjs\s+(run|validate|status|release)(?=\s|$)/;
 const INTERPRETER_WRITE = /\b(node|python3?|perl|ruby)\s+(-e|--eval|-p|-c)\b/;
 
@@ -168,7 +168,19 @@ export function shellTargets(command) {
 const touchesState = (command) =>
   command.includes('.claude/backend-engineer') ||
   /\bledger\.(json|lock)\b|ownership\.json|telemetry\.jsonl/.test(command) ||
-  /\b(ledger|telemetry|report|orchestrate)\.mjs\b/.test(command);
+  /\b(ledger|telemetry|report|orchestrate|inventory)\.mjs\b/.test(command);
+
+// What the trace records about one hook call: the tool, the key names of the payload, and the agent
+// type. Values are not recorded, except the tool name and the agent type. Run a session with
+// BACKEND_GUARD_TRACE=1 to see whether agent_id and agent_type are present for subagents.
+export function traceEntry(input) {
+  return {
+    tool: input?.tool_name ?? null,
+    keys: Object.keys(input ?? {}).sort(),
+    agent_type: input?.agent_type ?? null,
+    agent_id_present: typeof input?.agent_id === 'string' && input.agent_id !== '',
+  };
+}
 
 const agentName = (input) => (input?.agent_type ?? '').split(':').pop();
 const isSubagent = (input) => typeof input?.agent_id === 'string' && input.agent_id !== '';
@@ -261,6 +273,16 @@ if (isMain) {
     input = JSON.parse(raw);
   } catch {
     process.exit(0);
+  }
+
+  if (process.env.BACKEND_GUARD_TRACE) {
+    const projectDir = process.env.CLAUDE_PROJECT_DIR || input?.cwd || process.cwd();
+    try {
+      mkdirSync(join(projectDir, '.claude', 'backend-engineer'), { recursive: true });
+      appendFileSync(join(projectDir, '.claude', 'backend-engineer', 'hook-trace.jsonl'), `${JSON.stringify(traceEntry(input))}\n`);
+    } catch {
+      // The trace is a diagnostic. It must never block a tool call.
+    }
   }
 
   const verdict = decide(input);

@@ -4,9 +4,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { addItem, emptyLedger, loadLedger, makeContext, saveLedger } from '../scripts/ledger.mjs';
+import { addItem, emptyLedger, loadLedger, makeContext, recordRun, saveLedger } from '../scripts/ledger.mjs';
 import { advance, approve, dispatchFor, main, nextPhase, planWaves, prerequisites, statusOf } from '../scripts/orchestrate.mjs';
-import { declare, passingRun, withRepo } from './helpers.mjs';
+import { PASS, declare, passingRun, withRepo } from './helpers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OPENAPI_EXAMPLE = resolve(HERE, '../examples/openapi.example.json');
@@ -218,5 +218,23 @@ test('the example ledger and its OpenAPI document reach the contract phase toget
     completePhases(dir, ['discover', 'understand', 'plan']);
     assert.equal(approve(dir, 'contract', OPENAPI_EXAMPLE, { now: FIXED }).ok, true);
     assert.equal(advance(dir, 'contract', { now: FIXED }).ok, true);
+  });
+});
+
+test('verify needs a current passing migrate run once the project has migrations', () => {
+  withRepo((dir) => {
+    plannedLedger(dir);
+    completePhases(dir, ['discover', 'understand', 'plan']);
+    approve(dir, 'contract', OPENAPI_EXAMPLE, { now: FIXED });
+    const ledger = declare(loadLedger(dir), { migrate: PASS });
+    addItem(ledger, 'tasks', { owner: 'backend-implementer', files: ['src/feature/'], status: 'done' });
+    addItem(ledger, 'migrations', { file: 'db/migrations/002.sql', description: 'add column', backwardCompatible: true, irreversible: false, rollback: 'drop column' });
+    saveLedger(dir, ledger);
+    completePhases(dir, ['contract', 'implement']);
+    assert.match(advance(dir, 'verify', { now: FIXED }).reasons.join('\n'), /migrations are not verified/);
+
+    recordRun(ledger, makeContext(dir), { name: 'migrate', scope: 'focused', command: PASS });
+    saveLedger(dir, ledger);
+    assert.doesNotMatch(advance(dir, 'verify', { now: FIXED }).reasons.join('\n'), /migrations are not verified/);
   });
 });

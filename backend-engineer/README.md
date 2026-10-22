@@ -107,7 +107,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs" finish
 | `route.mjs` | the model tier for one dispatch, with the reasons; the orchestrator passes it to the Agent tool |
 | `guard.mjs` | the PreToolUse guard (see below) |
 | `telemetry.mjs` | stage time, dispatches by agent and model, reported tokens, failures, correction rounds, and a comparison of two runs |
-| `contract.mjs` | checks an OpenAPI 3 document against the API each journey step names |
+| `contract.mjs` | checks an OpenAPI 3 document against the journeys and against the frontend's API client |
+| `inventory.mjs` | scans the UI for interaction sites (handlers, forms, buttons, links, navigation) and records the per-file counts |
 | `report.mjs` | writes the operational dashboard (HTML) and the final report (Markdown) |
 | `view.mjs` | the view both renderings read, so they cannot disagree |
 | `fingerprint.mjs` | content fingerprints of journeys' files and of the working tree |
@@ -135,7 +136,17 @@ The routing takes effect only when the orchestrator passes the model to the Agen
 
 ### OpenAPI check
 
-`contract.mjs check <openapi.json>` checks that every API a journey step names exists in the document, that each operation documents a success response and a client-error response, that state-changing operations are protected (or marked `x-public: true`), and that operation IDs are unique. An empty `security` list counts as unprotected, and an operation with no list of its own inherits the document's. It does not call the service, and it does not generate the document.
+`contract.mjs check <openapi.json> [--client <file>]...` checks the document against the journeys:
+
+- every API a journey step names exists in it;
+- each operation documents a success response and a client-error response;
+- each state-changing operation is protected (security, or `x-public: true`), and states whether it is idempotent (`x-idempotent`, or an `Idempotency-Key` header);
+- a request body rejects unknown fields (`additionalProperties: false`), inline or through a `$ref`;
+- operation IDs are unique.
+
+An empty `security` list counts as unprotected, and an operation with no list of its own inherits the document's.
+
+Each `--client` file is scanned for literal calls (`fetch` with a literal path, and `api`, `client`, `http` or `axios` calls). Each call must exist in the document. The scan is a heuristic: it skips paths built from a variable base, and it does not follow a call through a helper. It does not call the service, and it does not generate the document. Transaction boundaries are not checked; the reviewer judges them.
 
 ### Development modes
 
@@ -176,6 +187,10 @@ For the orchestrator: plugin commands are allowed. While a run has an ownership 
 
 ## Limitations
 
+- **Agent identity is traced, not yet confirmed.** Set `BACKEND_GUARD_TRACE=1` in a real run. The guard then appends each hook call's tool, payload key names and agent fields to `.claude/backend-engineer/hook-trace.jsonl`, with no values. Use it to confirm `agent_id` and `agent_type` reach `PreToolUse` before relying on the subagent rules.
+- **The UI inventory and the client scan are heuristics.** The inventory counts common handler, form, button, link and navigation patterns, so a site written another way is missed. A release with interaction sites in a file that has no interaction record is partial, not complete.
+- **Reviews are written by the orchestrator.** A passed review needs a report, and the ledger stores its hash, so a later edit is visible. The ledger does not read the report's content.
+- **Transactions are a judgment.** Whether a multi-step write is atomic is not checked by any script.
 - **Agent identity.** The guard identifies subagents by `agent_id` and read-only agents by `agent_type` in the hook input. Neither is confirmed for `PreToolUse` in the Claude Code version this plugin targets. If the harness omits them, subagent rules fall back to the orchestrator's rules, and read-only agents are not restricted. Check this on a real run first.
 - **Plugin root variable.** The skill and agent prompts call the scripts through `${CLAUDE_PLUGIN_ROOT}`. Hook commands are documented to support this variable. Its expansion in skill and agent text is not confirmed. If it does not expand, the commands in those prompts will fail and must be pointed at the installed path.
 - **The orchestrator is trusted.** It records review verdicts it receives, and it chooses which declared command to run. The ledger cannot check that a verdict reflects a real review. The report says so.
@@ -190,7 +205,7 @@ For the orchestrator: plugin commands are allowed. While a run has an ownership 
 
 ## Example
 
-`examples/example-run.md` is a captured run of one feature in a scratch repository. It shows the phase order, a journey blocked by an open decision, a gap moved through its lifecycle, declared runs, a review, the Complete status, and the generated report. Its commands are stand-ins, and the document says so.
+`examples/example-run.md` is a captured run of one feature in a scratch repository. It shows the phase order, the UI inventory, a journey blocked by an open decision, a gap moved through its lifecycle, a migration that is not verified until its migrate run passes, refusals at each gate, the acceptance evidence, a review, and the Complete status. Its commands are stand-ins, and the document says so.
 
 ## Not verified here
 

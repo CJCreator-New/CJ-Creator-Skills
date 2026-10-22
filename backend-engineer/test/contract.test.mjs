@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { checkContract, parseApi } from '../scripts/contract.mjs';
+import { checkClientCalls, checkContract, main as contractMain, parseApi, samePath, scanClient } from '../scripts/contract.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const load = (name) => JSON.parse(readFileSync(resolve(HERE, '../examples', name), 'utf8'));
@@ -69,4 +70,68 @@ test('security inherited from the document default counts for an operation that 
   assert.deepEqual(checkContract(LEDGER, doc), []);
   doc.security = [];
   assert.match(checkContract(LEDGER, doc).join('\n'), /must declare security/);
+});
+
+test('a state-changing operation must say whether it is idempotent, or take an Idempotency-Key header', () => {
+  const doc = structuredClone(OPENAPI);
+  delete doc.paths['/expenses/{id}/submit'].post['x-idempotent'];
+  assert.match(checkContract(LEDGER, doc).join('\n'), /must state whether it is idempotent/);
+  doc.paths['/expenses/{id}/submit'].post.parameters = [{ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string' } }];
+  assert.deepEqual(checkContract(LEDGER, doc), []);
+});
+
+test('a request body must reject unknown fields, inline or through a $ref', () => {
+  const doc = structuredClone(OPENAPI);
+  doc.components.schemas = {
+    Draft: { type: 'object', properties: { note: { type: 'string' } }, additionalProperties: false },
+    Loose: { type: 'object', properties: { note: { type: 'string' } } },
+  };
+  doc.paths['/expenses/{id}/submit'].post.requestBody = { content: { 'application/json': { schema: { $ref: '#/components/schemas/Loose' } } } };
+  assert.match(checkContract(LEDGER, doc).join('\n'), /request body must reject unknown fields/);
+  doc.paths['/expenses/{id}/submit'].post.requestBody = { content: { 'application/json': { schema: { $ref: '#/components/schemas/Draft' } } } };
+  assert.deepEqual(checkContract(LEDGER, doc), []);
+  doc.paths['/expenses/{id}/submit'].post.requestBody = { content: {} };
+  assert.match(checkContract(LEDGER, doc).join('\n'), /the request body has no schema/);
+});
+
+test('a client literal path is matched to the document, with template and parameter segments', () => {
+  assert.equal(samePath('/expenses/{id}/submit', '/expenses/${id}/submit'), true);
+  assert.equal(samePath('/expenses/{id}/submit', '/orders/42/submit'), false);
+  assert.equal(samePath('/expenses/{id}', '/expenses/{id}?draft=1'), true);
+});
+
+test('the client scan finds literal calls, and skips paths built from a variable base', () => {
+  const source = `
+    await fetch('/expenses/' + id);
+    await fetch(\`/expenses/\${id}/submit\`, { method: 'POST', body: '{}' });
+    await api.get('/expenses/\${id}');
+    await client.delete('/expenses/\${id}');
+    await fetch(\`\${base}/expenses\`);
+  `;
+  assert.deepEqual(scanClient(source), [
+    { method: 'POST', path: '/expenses/${id}/submit' },
+    { method: 'GET', path: '/expenses/${id}' },
+    { method: 'DELETE', path: '/expenses/${id}' },
+  ]);
+});
+
+test('a client call the document does not define is reported', () => {
+  const calls = [{ method: 'POST', path: '/expenses/${id}/submit' }, { method: 'PUT', path: '/expenses/${id}' }];
+  const problems = checkClientCalls(OPENAPI, calls, 'src/api.ts');
+  assert.deepEqual(problems, ['src/api.ts: the client calls PUT /expenses/${id}, which the document does not define']);
+});
+
+test('the contract CLI takes frontend client files, and reports a call the document lacks', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'be-client-'));
+  try {
+    const client = join(dir, 'api.ts');
+    writeFileSync(client, "export const cancel = (id) => api.delete(`/expenses/${id}`);\n");
+    const doc = join(dir, 'openapi.json');
+    writeFileSync(doc, JSON.stringify(OPENAPI));
+    const result = contractMain(['check', doc, '--client', client], { CLAUDE_PROJECT_DIR: dir });
+    assert.equal(result.code, 1);
+    assert.match(result.out, /the client calls DELETE \/expenses\/\$\{id\}, which the document does not define/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

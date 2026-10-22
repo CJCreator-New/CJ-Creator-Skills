@@ -30,9 +30,10 @@
 //   ledger.mjs finish
 //   ledger.mjs abort
 
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { pathFiles, pathsHash, treeHash } from './fingerprint.mjs';
@@ -46,10 +47,26 @@ export const PREFIX = {
   gaps: 'G',
   decisions: 'D',
   tasks: 'T',
+  migrations: 'M',
   evidence: 'E',
 };
 export const PHASES = ['discover', 'understand', 'plan', 'contract', 'implement', 'verify', 'e2e', 'review', 'deliver'];
-export const COMMAND_NAMES = ['test', 'testFocused', 'regression', 'e2e', 'lint', 'typecheck', 'build'];
+export const COMMAND_NAMES = ['test', 'testFocused', 'regression', 'e2e', 'lint', 'typecheck', 'build', 'migrate'];
+// The commands the CLI accepts. The validator checks that the skill names only these.
+export const LEDGER_COMMANDS = [
+  'init',
+  'add',
+  'set',
+  'gap',
+  'run',
+  'review',
+  'validate',
+  'status',
+  'release',
+  'ownership',
+  'finish',
+  'abort',
+];
 export const SOURCES = ['confirmed', 'inferred', 'proposed', 'unresolved', 'defect', 'assumption', 'out-of-scope'];
 export const PRIORITIES = ['high', 'medium', 'low'];
 export const RISKS = ['low', 'medium', 'high'];
@@ -109,6 +126,7 @@ const DEFAULTS = {
   gaps: { status: 'Detected', journeyIds: [], requirementIds: [] },
   decisions: { status: 'open', blocks: [] },
   tasks: { status: 'planned', dependsOn: [] },
+  migrations: { irreversible: false },
 };
 const TAIL_LINES = 40;
 const MAX_BUFFER = 64 * 1024 * 1024;
@@ -138,7 +156,9 @@ export function emptyLedger() {
     gaps: [],
     decisions: [],
     tasks: [],
+    migrations: [],
     evidence: [],
+    inventory: null,
   };
 }
 
@@ -148,6 +168,8 @@ export function loadLedger(projectDir) {
   ledger.project ??= {};
   ledger.phases ??= [];
   ledger.approvals ??= [];
+  ledger.migrations ??= [];
+  ledger.inventory ??= null;
   return ledger;
 }
 
@@ -297,13 +319,40 @@ export function gapTransition(ledger, gap, target, ctx) {
   }
   if (target === 'Regression Verified') {
     if (!gap.regressionTests?.length) reasons.push('record regressionTests first');
-    if (!passingRuns.some((e) => e.scope === 'regression')) {
+    const regression = passingRuns.filter((e) => e.scope === 'regression');
+    if (regression.length === 0) {
       reasons.push('no current passing regression-scope run is linked to this gap');
+    } else {
+      // A named regression test counts only if its name printed in a passing regression run.
+      const seen = new Set(regression.flatMap((e) => e.testsSeen ?? []));
+      const missing = (gap.regressionTests ?? []).filter((name) => !seen.has(name));
+      if (missing.length) reasons.push(`these regression tests did not print in a passing regression run: ${missing.join(', ')}`);
     }
   }
-  if (target === 'Closed' && !gap.acceptance?.length) reasons.push('record acceptance criteria first');
+  if (target === 'Closed') {
+    if (!gap.acceptance?.length) reasons.push('record acceptance criteria first');
+    for (const item of gap.acceptance ?? []) {
+      const proof = findEvidence(ledger, item.evidence);
+      const linked = proof?.kind === 'review' || proof?.gapIds?.includes(gap.id);
+      if (!proof || !linked || !evidenceHolds(ledger, proof, ctx)) {
+        reasons.push(`acceptance "${item.criterion}" has no current passing evidence linked to this gap (${item.evidence})`);
+      }
+    }
+  }
   return { ok: reasons.length === 0, reasons };
 }
+
+export const findEvidence = (ledger, id) => ledger.evidence.find((e) => e.id === id);
+
+// A run holds while it passed and is still current. A review holds while it passed and the tree is
+// unchanged since the review.
+export function evidenceHolds(ledger, record, ctx) {
+  if (record.kind === 'run') return record.exitCode === 0 && runIsCurrent(record, ledger, ctx);
+  if (record.kind === 'review') return record.verdict === 'passed' && reviewIsCurrent(record, ctx);
+  return false;
+}
+
+export const findDecision = (ledger, id) => ledger.decisions.find((d) => d.id === id);
 
 // Reachability over dependsOn. reaches(a, b) is true when task a depends on task b, directly or not.
 export function taskReaches(tasks) {
@@ -484,6 +533,37 @@ export function validateLedger(ledger) {
     }
   }
 
+  for (const g of ledger.gaps ?? []) {
+    if (g.regressionTests !== undefined && !isStringList(g.regressionTests)) fail(`${g.id}: regressionTests must be a list of test names`);
+    if (g.acceptance !== undefined) {
+      const shaped = Array.isArray(g.acceptance) && g.acceptance.every((a) => typeof a?.criterion === 'string' && typeof a?.evidence === 'string');
+      if (!shaped) fail(`${g.id}: acceptance must be a list of {criterion, evidence} entries`);
+    }
+  }
+
+  for (const i of ledger.interactions ?? []) {
+    if (i.source !== undefined && (typeof i.source !== 'string' || i.source === '')) fail(`${i.id}: source must be a file path`);
+  }
+
+  for (const m of ledger.migrations ?? []) {
+    if (typeof m.file !== 'string' || m.file === '') fail(`${m.id}: file is required`);
+    if (typeof m.description !== 'string' || m.description === '') fail(`${m.id}: description is required`);
+    if (typeof m.backwardCompatible !== 'boolean') fail(`${m.id}: backwardCompatible must be true or false`);
+    if (typeof m.irreversible !== 'boolean') fail(`${m.id}: irreversible must be true or false`);
+    if (!m.irreversible && (typeof m.rollback !== 'string' || m.rollback === '')) {
+      fail(`${m.id}: a reversible migration needs a rollback step`);
+    }
+    if (m.irreversible) {
+      if (!m.decisionId) fail(`${m.id}: an irreversible migration must name the answered decision that approved it`);
+      else refs(m.id, 'decisionId', [m.decisionId], 'decisions');
+    }
+  }
+
+  if (ledger.inventory !== null && ledger.inventory !== undefined) {
+    const files = ledger.inventory.files;
+    if (typeof files !== 'object' || Array.isArray(files) || files === null) fail('inventory.files must be an object of file to count');
+  }
+
   const phases = ledger.phases ?? [];
   if (!Array.isArray(phases)) {
     fail('phases must be a list');
@@ -503,7 +583,7 @@ export function validateLedger(ledger) {
 
 // Checks a run before it starts: the command must be the declared one, and each journey it is
 // linked to must name files that exist, so its evidence can ever go stale.
-export function prepareRun(ledger, ctx, { name, scope, command, journeyIds = [], gapIds = [] }) {
+export function prepareRun(ledger, ctx, { name, scope, command, journeyIds = [], gapIds = [], tests = [] }) {
   if (!SCOPES.includes(scope)) throw new Error(`scope must be one of ${SCOPES.join(', ')}`);
   const declared = ledger.project.commands?.[name];
   if (declared === undefined) throw new Error(`"${name}" has no command in project.commands; declare it with set project first`);
@@ -515,7 +595,17 @@ export function prepareRun(ledger, ctx, { name, scope, command, journeyIds = [],
     if (files === null) throw new Error('journey evidence needs a git repository, so that its files can be fingerprinted');
     if (files.length === 0) throw new Error(`${j.id} dependsOn matches no tracked files: ${j.dependsOn.join(', ')}`);
   }
-  return { name, scope, command, journeyIds, gapIds, journeys, treeBefore: treeHash(ctx.projectDir), before: Object.fromEntries(journeys.map((j) => [j.id, pathsHash(ctx.projectDir, j.dependsOn)])) };
+  return {
+    name,
+    scope,
+    command,
+    journeyIds,
+    gapIds,
+    tests,
+    journeys,
+    treeBefore: treeHash(ctx.projectDir),
+    before: Object.fromEntries(journeys.map((j) => [j.id, pathsHash(ctx.projectDir, j.dependsOn)])),
+  };
 }
 
 // Runs the command. The ledger is not touched, so this may take a long time without holding the lock.
@@ -528,7 +618,10 @@ export function executeRun(prepared, { projectDir, cwd = projectDir, now = () =>
     maxBuffer: MAX_BUFFER,
     timeout: RUN_TIMEOUT_MS,
   });
-  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.split('\n').slice(-TAIL_LINES).join('\n');
+  const full = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const output = full.split('\n').slice(-TAIL_LINES).join('\n');
+  // The names the run was expected to print that actually appear in its full output.
+  const testsSeen = prepared.tests.filter((name) => full.includes(name));
   return {
     kind: 'run',
     name: prepared.name,
@@ -544,8 +637,15 @@ export function executeRun(prepared, { projectDir, cwd = projectDir, now = () =>
     journeyHashes: Object.fromEntries(
       prepared.journeys.map((j) => [j.id, { before: prepared.before[j.id], after: pathsHash(projectDir, j.dependsOn) }]),
     ),
+    tests: prepared.tests,
+    testsSeen,
     tail: output,
   };
+}
+
+// Records the UI scan: a map of each UI file to the number of interaction sites found in it.
+export function setInventory(ledger, files, now = () => new Date()) {
+  ledger.inventory = { recordedAt: now().toISOString(), files };
 }
 
 export function appendRun(ledger, measured) {
@@ -555,12 +655,12 @@ export function appendRun(ledger, measured) {
 }
 
 // Convenience for tests and callers that already hold the ledger: check, run and record.
-export function recordRun(ledger, ctx, { name, scope, command, journeyIds = [], gapIds = [], now = () => new Date() }) {
-  const prepared = prepareRun(ledger, ctx, { name, scope, command, journeyIds, gapIds });
+export function recordRun(ledger, ctx, { name, scope, command, journeyIds = [], gapIds = [], tests = [], now = () => new Date() }) {
+  const prepared = prepareRun(ledger, ctx, { name, scope, command, journeyIds, gapIds, tests });
   return appendRun(ledger, executeRun(prepared, { projectDir: ctx.projectDir, now }));
 }
 
-export function recordReview(ledger, ctx, { verdict, reviewer = 'release-reviewer', report = null, notes = '', now = () => new Date() }) {
+export function recordReview(ledger, ctx, { verdict, reviewer = 'release-reviewer', report = null, reportSha256 = null, notes = '', now = () => new Date() }) {
   if (!REVIEW_VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${REVIEW_VERDICTS.join(', ')}`);
   if (!REVIEWERS.includes(reviewer)) throw new Error(`reviewer must be one of ${REVIEWERS.join(', ')}`);
   const entry = {
@@ -569,6 +669,7 @@ export function recordReview(ledger, ctx, { verdict, reviewer = 'release-reviewe
     reviewer,
     verdict,
     report,
+    reportSha256,
     notes,
     recordedAt: now().toISOString(),
     treeHash: ctx.treeHash(),
@@ -632,6 +733,36 @@ export function releaseStatus(ledger, ctx) {
   const fullRun = latestCurrent('test', 'full');
   if (!fullRun || fullRun.exitCode !== 0) notReady.push('no current passing full suite run (run test --scope full)');
 
+  // A requirement the team marked implemented must have every journey that serves it verified.
+  for (const r of ledger.requirements) {
+    if (r.status !== 'implemented') continue;
+    const unverified = ledger.journeys
+      .filter((j) => j.requirementIds.includes(r.id) && journeyState(ledger, j, ctx) !== 'verified')
+      .map((j) => j.id);
+    if (unverified.length) notReady.push(`${r.id} is marked implemented, but ${unverified.join(', ')} not verified`);
+  }
+
+  // Migrations: each must be verified by a current passing migrate run, reversible or approved.
+  const migrateRun = [...runs].reverse().find((e) => e.name === 'migrate' && e.exitCode === 0 && runIsCurrent(e, ledger, ctx));
+  for (const m of ledger.migrations) {
+    if (!migrateRun) notReady.push(`${m.id} (${m.file}) is not verified: no current passing migrate run`);
+    if (!m.backwardCompatible && !m.irreversible) {
+      notReady.push(`${m.id} is not backward compatible; record it as irreversible with an answered decision, or make it compatible`);
+    }
+    if (m.irreversible && findDecision(ledger, m.decisionId)?.status !== 'answered') {
+      notReady.push(`${m.id} is irreversible, and its decision ${m.decisionId} is not answered`);
+    }
+  }
+
+  // UI inventory: every UI file that has interaction sites needs an interaction record.
+  if (!ledger.inventory) {
+    partial.push('no UI inventory recorded (run inventory.mjs record)');
+  } else {
+    const sourced = new Set(ledger.interactions.map((i) => i.source).filter(Boolean));
+    const unmapped = Object.keys(ledger.inventory.files).filter((file) => !sourced.has(file));
+    if (unmapped.length) partial.push(`UI files with interaction sites and no interaction record: ${unmapped.join(', ')}`);
+  }
+
   const reviews = ledger.evidence.filter((e) => e.kind === 'review');
   const review = reviews[reviews.length - 1];
   if (!review) notReady.push('no independent review recorded');
@@ -659,7 +790,7 @@ export function parseRun(args) {
   const split = args.indexOf('--');
   if (split < 1 || split === args.length - 1) throw new Error(`run needs a name and a command after "--"\n${USAGE}`);
   const [name, ...flags] = args.slice(0, split);
-  const opts = { name, scope: 'focused', journeyIds: [], gapIds: [], command: args.slice(split + 1).join(' ') };
+  const opts = { name, scope: 'focused', journeyIds: [], gapIds: [], tests: [], command: args.slice(split + 1).join(' ') };
   const list = (value) => value.split(',').map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < flags.length; i += 2) {
     const [flag, value] = [flags[i], flags[i + 1]];
@@ -667,6 +798,7 @@ export function parseRun(args) {
     if (flag === '--scope') opts.scope = value;
     else if (flag === '--journey') opts.journeyIds = list(value);
     else if (flag === '--gap') opts.gapIds = list(value);
+    else if (flag === '--tests') opts.tests = list(value);
     else throw new Error(`unknown run option: ${flag}`);
   }
   if (!SCOPES.includes(opts.scope)) throw new Error(`scope must be one of ${SCOPES.join(', ')}`);
@@ -764,6 +896,14 @@ function dispatch(projectDir, command, args) {
         else if (flags[i] === '--notes') opts.notes = flags[i + 1];
         else if (flags[i] === '--reviewer') opts.reviewer = flags[i + 1];
         else throw new Error(`unknown review option: ${flags[i]}`);
+      }
+      // A review is a record of a written report, so a passed review must name one, and the report
+      // must exist. Its hash is stored, so a later edit of the report is visible.
+      if (verdict === 'passed' && !opts.report) throw new Error('a passed review needs --report <file> with the written review');
+      if (opts.report) {
+        const path = resolve(projectDir, opts.report);
+        if (!existsSync(path)) throw new Error(`the review report does not exist: ${opts.report}`);
+        opts.reportSha256 = createHash('sha256').update(readFileSync(path)).digest('hex');
       }
       const ledger = loadLedger(projectDir);
       const entry = recordReview(ledger, makeContext(projectDir), opts);

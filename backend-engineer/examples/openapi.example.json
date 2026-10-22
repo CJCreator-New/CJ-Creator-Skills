@@ -18,6 +18,7 @@
       "post": {
         "operationId": "submitExpenseReport",
         "security": [{ "bearerAuth": [] }],
+        "x-idempotent": true,
         "responses": {
           "200": { "description": "The report is now submitted." },
           "401": { "description": "Not authenticated." },

@@ -31,7 +31,7 @@
       "name": "backend-engineer",
       "source": "./backend-engineer",
       "description": "Backend engineering orchestrator: reconstructs user journeys from the frontend and requirements, finds gaps early, designs contracts and data, implements and integrates the backend with parallel agents in dependency waves, and verifies complete workflows with evidence.",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "license": "MIT",
       "keywords": ["backend", "api", "database", "security", "user-flows", "testing", "orchestration"]
     }

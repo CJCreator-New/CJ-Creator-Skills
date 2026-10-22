@@ -41,6 +41,8 @@ export const KIND_FOR_OWNER = {
   'test-engineer': 'tests',
 };
 const USAGE = 'usage: orchestrate.mjs status | advance <phase> | approve contract <openapi.json> | plan';
+// The commands the CLI accepts. The validator checks that the skill names only these.
+export const ORCH_COMMANDS = ['status', 'advance', 'approve', 'plan'];
 
 const hasPhase = (ledger, name) => ledger.phases.some((p) => p.name === name);
 
@@ -92,6 +94,12 @@ export function prerequisites(ledger, phase, ctx, readFile) {
       need('implement');
       const open = ledger.tasks.filter((t) => t.status !== 'done').map((t) => t.id);
       if (open.length) reasons.push(`tasks are not done: ${open.join(', ')}`);
+      const migrated = [...ledger.evidence]
+        .reverse()
+        .find((e) => e.kind === 'run' && e.name === 'migrate' && e.exitCode === 0 && runIsCurrent(e, ledger, ctx));
+      if (ledger.migrations.length && !migrated) {
+        reasons.push('migrations are not verified: run the migrate command against a test database, and it must pass on the final tree');
+      }
       break;
     }
     case 'e2e':

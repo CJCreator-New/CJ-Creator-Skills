@@ -8,7 +8,9 @@ import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { READ_ONLY_AGENTS } from '../hooks/guard.mjs';
-import { validateLedger } from './ledger.mjs';
+import { LEDGER_COMMANDS, validateLedger } from './ledger.mjs';
+import { ORCH_COMMANDS } from './orchestrate.mjs';
+import { INVENTORY_COMMANDS } from './inventory.mjs';
 import { checkContract } from './contract.mjs';
 
 const PLUGIN = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -86,6 +88,23 @@ for (const skill of readdirSync(skillsDir)) {
   for (const ref of body.matchAll(/`(references\/[\w.-]+\.md)`/g)) {
     if (!existsSync(join(skillsDir, skill, ref[1]))) fail(`${rel(file)}: references missing file ${ref[1]}`);
   }
+}
+
+// 3b. The skill names only commands the scripts accept, and only reference files, scripts and
+// workflows that exist. A skill that calls a command that does not exist would fail at run time.
+const skillText = readFileSync(join(skillsDir, 'backend-build', 'SKILL.md'), 'utf8');
+const commandSets = { LEDGER: LEDGER_COMMANDS, ORCH: ORCH_COMMANDS, INVENTORY: INVENTORY_COMMANDS };
+for (const [, macro, command] of skillText.matchAll(/\b(LEDGER|ORCH|INVENTORY)\s+([a-z][a-z-]*)/g)) {
+  if (!commandSets[macro].includes(command)) fail(`SKILL.md: ${macro} ${command} is not a command of that script`);
+}
+for (const [, name] of skillText.matchAll(/`([a-z-]+\.md)`/g)) {
+  if (!existsSync(join(skillsDir, 'backend-build', 'references', name))) fail(`SKILL.md: references missing file ${name}`);
+}
+for (const [, script] of skillText.matchAll(/scripts\/([a-z-]+\.mjs)/g)) {
+  if (!existsSync(join(PLUGIN, 'scripts', script))) fail(`SKILL.md: names missing script ${script}`);
+}
+for (const [, workflow] of skillText.matchAll(/workflows\/([\w-]+\.js)/g)) {
+  if (!existsSync(join(PLUGIN, 'workflows', workflow))) fail(`SKILL.md: names missing workflow ${workflow}`);
 }
 
 // 4. Agents: name equals filename, description, tools, a known model alias, and a body

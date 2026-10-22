@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { addItem, emptyLedger, loadLedger, main, makeContext, recordReview, releaseStatus, validateLedger } from '../scripts/ledger.mjs';
-import { declare, passingRun, withRepo } from './helpers.mjs';
+import { declare, emptyInventory, passingRun, withRepo } from './helpers.mjs';
 
 function completeLedger(dir, mode = 'standard') {
-  const ledger = declare(emptyLedger());
+  const ledger = emptyInventory(declare(emptyLedger()));
   ledger.project.mode = mode;
   addItem(ledger, 'requirements', { source: 'confirmed', priority: 'high', text: 'Works.', status: 'implemented' });
   addItem(ledger, 'journeys', {
@@ -79,7 +81,8 @@ test('review records the reviewer named on the command line', () => {
   withRepo((dir) => {
     const env = { CLAUDE_PROJECT_DIR: dir };
     main(['init'], env);
-    main(['review', 'passed', '--reviewer', 'security-reviewer', '--notes', 'checked authz'], env);
+    writeFileSync(join(dir, 'review.md'), '# Review\nChecked authz.\n');
+    main(['review', 'passed', '--reviewer', 'security-reviewer', '--report', 'review.md', '--notes', 'checked authz'], env);
     const review = loadLedger(dir).evidence.at(-1);
     assert.equal(review.reviewer, 'security-reviewer');
     assert.equal(review.notes, 'checked authz');

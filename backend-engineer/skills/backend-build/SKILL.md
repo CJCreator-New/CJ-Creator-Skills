@@ -14,7 +14,7 @@ You are the orchestrator, and you run the workflow. Subagents cannot spawn subag
 - **LEDGER** (`node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs"`) holds the records and the evidence. It refuses any change that would make the ledger invalid, runs the declared checks itself, and computes the release status.
 - **ORCH** (`node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrate.mjs"`) holds the phase order, the contract approval, and the parallel waves. It refuses a phase that is not ready.
 
-Also available: **ROUTE** (`scripts/route.mjs`), **TELEMETRY** (`scripts/telemetry.mjs`), **CONTRACT** (`scripts/contract.mjs`), and **REPORT** (`scripts/report.mjs`).
+Also available: **ROUTE** (`scripts/route.mjs`), **TELEMETRY** (`scripts/telemetry.mjs`), **CONTRACT** (`scripts/contract.mjs`), **INVENTORY** (`scripts/inventory.mjs`), and **REPORT** (`scripts/report.mjs`).
 
 Read the reference files once, at the start of the phase that needs them, from this skill's `references/` folder:
 - `flow-intelligence.md`: Phases 2 and 3.
@@ -79,12 +79,13 @@ For each wave, in one message:
 
 ## Phase 0: discover
 
+0. Run `ORCH status`. If it cannot find its script, stop and report that the plugin root variable did not expand. Do not guess a path.
 1. `git status --short` and `git branch --show-current`. Record existing uncommitted changes and never overwrite them. If on the default branch and the request changes code, ask which branch to use.
 2. Read project instructions: root `CLAUDE.md`, `AGENTS.md`, and nested `CLAUDE.md` files in the directories the request touches.
 3. `LEDGER init`. Then `LEDGER set project '<json>'` with:
    - the mode,
    - the stack (frontend, backend, database),
-   - the **commands** the project really runs, keyed by name: `test` (the full suite), `testFocused`, `regression`, `e2e`, `lint`, `typecheck`, `build`. Use the project's own scripts, such as `npm test`. Only a declared command can count as evidence.
+   - the **commands** the project really runs, keyed by name: `test` (the full suite), `testFocused`, `regression`, `e2e`, `lint`, `typecheck`, `build`, `migrate` (applies and reverts the migrations against a test database). Use the project's own scripts, such as `npm test`. Only a declared command can count as evidence.
    - the capabilities from step 5, and the limitations you already know.
 4. Dispatch **repo-intel** for the frontend and the backend. Record its commands, stack, and any unfinished work. Check its commands against the ones you declared.
 5. Probe capabilities and record each as available or unavailable. Never assume one: a test database and the migration command, a runnable backend and frontend, a browser for E2E tests, and each external service by name only.
@@ -95,7 +96,7 @@ For each wave, in one message:
 1. Dispatch **requirements-analyst** with the repository paths, the requirement documents and any design references. It is read-only.
 2. Record its output with `LEDGER add`: each requirement, each interaction (`local` with a reason, or `backend` with its journey), each journey, each gap, and each unresolved business rule as a decision that blocks the journeys it affects.
 3. Check the flow analysis against `flow-intelligence.md`.
-4. Run `LEDGER validate` and fix every error.
+4. Run `INVENTORY record <src>` on the frontend source. It records each UI file that has interaction sites (handlers, forms, buttons, links, navigation). Each such file needs an interaction whose `source` is that file, or the release stays partial. Then run `LEDGER validate` and fix every error.
 5. If a decision blocks a critical journey, ask the user one structured question that includes what each answer would change. Continue the independent work while you wait.
 6. `ORCH advance understand`.
 
@@ -109,8 +110,8 @@ For each wave, in one message:
 ## Phase 3: contract (Checkpoints B and C)
 
 1. Dispatch **api-architect** for the operations the journeys need. It writes the contract and the OpenAPI document.
-2. Dispatch **db-integrity** against the approved contract. Its migrations are new files.
-3. Run `CONTRACT check <openapi.json>` and record each problem as a gap with `detectedIn: "contract"`. Review the contract against the journeys yourself, for missing operations, failure responses, transitions and idempotency.
+2. Dispatch **db-integrity** against the approved contract. Its migrations are new files. Record each one with `LEDGER add migrations '<json>'`: its `file`, `description`, `backwardCompatible`, `irreversible`, and its `rollback` step. An irreversible migration names the answered decision that approved it.
+3. Run `CONTRACT check <openapi.json> --client <file>` for the document and each frontend client file. It checks the journeys, the responses, the protection, the idempotency statement and the request-body rules, and it checks each literal client call against the document. Record each problem as a gap with `detectedIn: "contract"`. Review the contract against the journeys yourself, for missing operations, failure responses, transitions and idempotency.
 4. Approve the contract: `ORCH approve contract <openapi.json>`. It runs the journey check and refuses a document that fails it. The approval records the file's hash, so a later edit voids it.
 5. `ORCH advance contract`.
 
@@ -125,7 +126,7 @@ For each wave, in one message:
 
 1. Dispatch **test-engineer** to write requirement-driven tests and to run the focused tests with `LEDGER run testFocused --scope focused --journey <ids> --gap <ids> -- "<the declared testFocused command>"`. Read the output.
 2. For each changed operation that touches authentication, authorization, input, data exposure, files or integrations, dispatch **security-reviewer**. Record its findings as gaps.
-3. For each migration, have **test-engineer** run it up and down against a test database, when the tooling allows, and record it with `LEDGER run`.
+3. For each migration, have **test-engineer** run the declared `migrate` command, which applies and reverts the migrations against a test database: `LEDGER run migrate --scope focused -- "<the declared migrate command>"`. The verify phase needs a current passing run on the final tree.
 4. Fix every failing test at its root cause before the next component depends on it.
 5. `ORCH advance verify`.
 
@@ -142,15 +143,15 @@ For each wave, in one message:
 For each gap, in order, following `gaps-verification-release.md`:
 1. Confirm the root cause at the earliest wrong step in the journey. Record it with `LEDGER set gaps <id> '{"rootCause": "..."}'`, then `LEDGER gap <id> "Root Cause Confirmed"`.
 2. Implement the smallest fix at the right layer. Record it with `set ... '{"fix": "..."}'`, then `gap ... "Fix Implemented"`.
-3. Add a regression test that would fail without the fix. Record its name in `regressionTests`, run it with `LEDGER run regression --scope regression --gap <id> --journey <ids> -- "<the declared regression command>"`, then move the gap through `Focused Tests Passed` and `Regression Verified`.
+3. Add a regression test that would fail without the fix. Record its name in `regressionTests`, then run it with `LEDGER run regression --scope regression --gap <id> --journey <ids> --tests "<name>" -- "<the declared regression command>"`. The name must print in the run's output: the ledger checks the output, not your summary. Then move the gap through `Focused Tests Passed` and `Regression Verified`.
 4. Re-run the affected journeys with `LEDGER run e2e --scope e2e --journey <ids>`. Journeys whose files changed are stale until they run again, and the ledger shows that.
-5. Close the gap with `gap <id> Closed` only after its acceptance criteria are recorded.
+5. Record the acceptance criteria as `acceptance: [{"criterion": "...", "evidence": "E-07"}]`, where each `evidence` is the ID of a current passing run linked to the gap, or of a current passing review. Then close the gap with `gap <id> Closed`. The ledger checks each evidence ID.
 
 ## Phase 8: review
 
 1. Run the full suite: `LEDGER run test --scope full -- "<the declared test command>"`. It must pass on the final tree.
 2. Dispatch **release-reviewer** on the final integrated state, with the ledger status, the requirements and journeys, and the changed files. It did not write the code.
-3. Record its verdict: `LEDGER review <passed|findings-open|rejected> --reviewer release-reviewer --report <path> --notes "<summary>"`. Record it only after the reviewer returns; the review is recorded against the tree as it is then.
+3. Record its verdict: `LEDGER review <passed|findings-open|rejected> --reviewer release-reviewer --report <path> --notes "<summary>"`. A passed review needs `--report` naming an existing file, the written review. The ledger stores its hash. Write the report under `.claude/backend-engineer/` (for example `.claude/backend-engineer/review.md`): a report elsewhere in the project changes the tree, which makes the full-suite run stale. Record it only after the reviewer returns; the review is recorded against the tree as it is then.
 4. In high-assurance mode, also dispatch **security-reviewer** on the final state, and record its verdict with `--reviewer security-reviewer`.
 5. Address each blocking finding. If the tree changes, run the full suite and the review again.
 6. `ORCH advance review`.

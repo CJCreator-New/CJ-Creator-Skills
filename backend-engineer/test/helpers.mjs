@@ -17,6 +17,12 @@ export const COMMANDS = {
   build: PASS,
 };
 
+// A UI inventory with no sites, so a ledger with no interaction sites is not partial for lack of one.
+export const emptyInventory = (ledger) => {
+  ledger.inventory = { recordedAt: new Date(0).toISOString(), files: {} };
+  return ledger;
+};
+
 // A ledger with the passing commands declared, so that runs can be recorded.
 export const declare = (ledger, overrides = {}) => {
   ledger.project = { ...ledger.project, commands: { ...COMMANDS, ...overrides } };

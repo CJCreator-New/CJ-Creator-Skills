@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import {
   mentionsSecret,
   readOwnership,
   shellTargets,
+  traceEntry,
 } from '../hooks/guard.mjs';
 
 const HOOK = resolve(dirname(fileURLToPath(import.meta.url)), '../hooks/guard.mjs');
@@ -263,4 +264,37 @@ test('the hook process exits 2 with the reason on stderr, and 0 when allowed', (
 
 test('the hook fails open on malformed stdin', () => {
   assert.equal(spawnSync(process.execPath, [HOOK], { input: '{nope', encoding: 'utf8' }).status, 0);
+});
+
+test('the orchestrator may record the UI inventory through the shell, a subagent may not', () => {
+  withProject((dir) => {
+    assert.equal(decide(bash('node scripts/inventory.mjs record src', dir), {}).allow, true);
+    assert.equal(decide({ ...bash('node scripts/inventory.mjs record src', dir), ...SUBAGENT }, {}).allow, false);
+  });
+});
+
+test('the trace records the tool, the payload key names and the agent identity, never the values', () => {
+  assert.deepEqual(traceEntry({ tool_name: 'Read', tool_input: { file_path: 'a.ts' } }), {
+    tool: 'Read',
+    keys: ['tool_input', 'tool_name'],
+    agent_type: null,
+    agent_id_present: false,
+  });
+  const entry = traceEntry({ ...SUBAGENT, ...bash('echo secret-value', '/tmp/x') });
+  assert.equal(entry.agent_id_present, true);
+  assert.equal(entry.agent_type, SUBAGENT.agent_type);
+  assert.doesNotMatch(JSON.stringify(entry), /secret-value/);
+});
+
+test('with BACKEND_GUARD_TRACE set, the hook appends a trace line and never blocks on a trace failure', () => {
+  withProject((dir) => {
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: dir, BACKEND_GUARD_TRACE: '1' };
+    const denied = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ ...SUBAGENT, ...write(LEDGER, dir) }), env, encoding: 'utf8' });
+    assert.equal(denied.status, 2, 'the ledger write is still denied');
+    const lines = readFileSync(join(dir, '.claude', 'backend-engineer', 'hook-trace.jsonl'), 'utf8').trim().split('\n');
+    const last = JSON.parse(lines.at(-1));
+    assert.equal(last.tool, 'Write');
+    assert.equal(last.agent_id_present, true);
+    assert.doesNotMatch(lines.at(-1), new RegExp(LEDGER.replace(/[.\\/]/g, '\\$&')));
+  });
 });

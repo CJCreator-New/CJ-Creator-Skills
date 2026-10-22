@@ -78,6 +78,7 @@
       "blocks": ["J-01"]
     }
   ],
+  "migrations": [],
   "tasks": [
     {
       "id": "T-01",

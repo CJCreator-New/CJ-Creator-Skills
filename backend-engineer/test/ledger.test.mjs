@@ -25,7 +25,7 @@ import {
   ledgerPath,
   ownershipPath,
 } from '../scripts/ledger.mjs';
-import { COMMANDS, PASS, declare, passingRun, withRepo } from './helpers.mjs';
+import { COMMANDS, PASS, declare, emptyInventory, passingRun, withRepo } from './helpers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER_CLI = resolve(HERE, '../scripts/ledger.mjs');
@@ -41,7 +41,7 @@ const exampleLedger = () => {
 
 // A ledger in which the single journey is fully verified and the release is complete.
 function completeLedger(dir) {
-  const ledger = declare(emptyLedger());
+  const ledger = emptyInventory(declare(emptyLedger()));
   addItem(ledger, 'requirements', { source: 'confirmed', priority: 'high', text: 'Feature works.', status: 'implemented' });
   addItem(ledger, 'journeys', {
     requirementIds: ['R-01'],
@@ -292,6 +292,7 @@ test('parseRun reads the scope, the linked ids and the command, and rejects bad 
     scope: 'e2e',
     journeyIds: ['J-01', 'J-02'],
     gapIds: ['G-01'],
+    tests: [],
     command: 'npm run e2e',
   });
   assert.throws(() => parseRun(['test']), /needs a name and a command/);
