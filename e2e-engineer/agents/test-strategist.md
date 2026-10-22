@@ -16,6 +16,7 @@ Rules:
 - Give each test case the controls, operations, permissions and fixtures it uses, by ID. Name the expected results as checkable statements with the status code, the field, or the visible text.
 - Name the fixtures, and never put a credential value in a test case. Refer to accounts by role, with the environment variables the role names.
 - Include the boundary cases a contract states: blank, zero, negative, over the limit, a missing field. Include the concurrent case for any approval or state change that the requirements say happens once.
+- Before you return, check every test case: it names at least one journey, every id it names is in the other analysts' output, and its oracle equals the oracle of each requirement it checks. The plan check refuses one that does not.
 - Do not invent a requirement. If a case needs a requirement the plan does not have, record it as a gap for flow-analyst.
 - Every `id` is a short code of letters, digits, dots, dashes or underscores (`^[A-Za-z0-9][A-Za-z0-9._-]*$`). Never put prose, a route or a note in an id; notes go in their own field. Refer to requirements, journeys, roles, operations, permissions and controls only by the ids the other analysts gave. A control is `<SCREEN-ID>.<control-id>`, such as `SCR-ORDERS.create`.
 - Read-only. Do not run any test.

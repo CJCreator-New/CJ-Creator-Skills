@@ -184,7 +184,7 @@ The five statuses follow the precedence in the plan (G19).
 
 ## Limits in v1.0
 
-- The analysts are prompts. Their output on a real repository has not been run here. The worked plan is hand-written in the shape they return.
+- The analysts are prompts. In a trial on an unfamiliar copy of the fixture app (`docs/e2e-engineer-analyst-trial.md`), they reported all 12 app-side planted defects, and in order their output loaded with 3 plan-check errors; the last prompt changes from that trial are not re-trialled. The worked plan is still hand-written in the shape they return.
 - No emulator or simulator runs in this environment, so the device matrix, compatibility, device evidence and the Android accessibility tree are tested with a stand-in command runner, not on a device. The iOS accessibility tree needs XCUITest and is not checked.
 - The fixture is a web app, so it has no native build. The native flow in the fixture is an example of the shape, and it cannot run here. The plan takes the native cases out of scope for this release (the user's decision, with D6 open), and the device path is covered by tests that inject a fake command runner.
 - Playwright is not installed by the plugin. It comes from the target repository, or from `browser.playwrightModule` in the config. Without it, the web targets are blocked, with the reason.

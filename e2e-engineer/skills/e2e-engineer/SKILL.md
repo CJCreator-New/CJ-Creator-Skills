@@ -55,7 +55,8 @@ The reference files in `references/` say how each stage works. Read the one a st
    - `flow-analyst` (`architecture`) reconstructs the journeys, their branches, the requirements and the API operations, and names each journey's permissions.
    - `rbac-analyst` (`authorization`) fills in the rules for the permissions the journeys name, with the enforcement point of each.
    - `test-strategist` (`architecture`) turns those into the test catalogue. It writes the executable checks for each api and db test case.
-   The analyst trial on a real repository found that analysts run in parallel invent their own ids for each other's items, and the plan does not load. Keep this order.
+   The analyst trial on a real repository found that analysts run in parallel invent their own ids for each other's items, and the plan check refuses the references. Keep this order.
+   Then send each analyst's gaps, and each plan-check error, back to the analyst that owns the item, once, with the other outputs. A gap that needs a person's decision, such as what an unspecified control should do, goes to the user, not to an analyst.
 5. Save each analyst's JSON under `.claude/e2e-engineer/drafts/`, then add its items with the ledger:
    `node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs" load <ledger> <plan.json>` for a whole plan, or `add <kind> <file>` for one item. Record the design map with `design <ledger> <file>`.
 6. Check the plan. A plan with errors does not freeze. An api or db test case marked `implemented` must have valid checks. Read each error, then return to the analyst that owns the item, or correct it.
