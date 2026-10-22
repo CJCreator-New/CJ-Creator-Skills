@@ -1,0 +1,8 @@
+{
+  "name": "backend-engineer",
+  "version": "0.1.0",
+  "description": "Backend engineering orchestrator: reconstructs user journeys from the frontend and requirements, finds gaps early, designs contracts and data, implements and integrates the backend, and verifies complete workflows with evidence.",
+  "author": {
+    "name": "CJCreator"
+  }
+}

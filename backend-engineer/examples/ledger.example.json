@@ -1,0 +1,75 @@
+{
+  "_comment": "Illustrative ledger for one feature: a manager can approve a submitted expense report. Copy to .claude/backend-engineer/ledger.json only to see the shape; the orchestrator builds the real ledger with ledger.mjs.",
+  "counters": { "R": 1, "J": 1, "I": 2, "G": 1, "D": 1, "T": 1, "E": 0 },
+  "requirements": [
+    {
+      "id": "R-01",
+      "source": "confirmed",
+      "priority": "high",
+      "text": "An employee can submit a draft expense report for manager approval.",
+      "status": "open"
+    }
+  ],
+  "journeys": [
+    {
+      "id": "J-01",
+      "requirementIds": ["R-01"],
+      "role": "employee",
+      "start": "Draft expense report open in the report form",
+      "steps": [
+        { "ui": "Submit button on the report form", "api": "POST /expenses/:id/submit" },
+        { "ui": "Confirmation dialog" }
+      ],
+      "outcomeSuccess": "The report status becomes submitted and it appears in the manager's approval queue.",
+      "failureBranches": ["A missing receipt returns a validation error and keeps the report as a draft."],
+      "dependsOn": ["src/features/expenses/", "server/expenses/"],
+      "priority": "high",
+      "status": "planned"
+    }
+  ],
+  "interactions": [
+    {
+      "id": "I-01",
+      "route": "/expenses/:id",
+      "element": "Submit button",
+      "classification": "backend",
+      "journeyId": "J-01"
+    },
+    {
+      "id": "I-02",
+      "route": "/expenses/:id",
+      "element": "Details / Receipts tab switcher",
+      "classification": "local",
+      "reason": "Switches panels in the client. No data is read or written."
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G-01",
+      "title": "Manager approval queue does not refresh after a submit",
+      "severity": "High",
+      "category": "Frontend",
+      "status": "Detected",
+      "journeyIds": ["J-01"],
+      "requirementIds": ["R-01"]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D-01",
+      "question": "Can the employee recall a submitted report before it is approved?",
+      "status": "open",
+      "blocks": ["J-01"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T-01",
+      "owner": "backend-implementer",
+      "files": ["server/expenses/"],
+      "status": "planned",
+      "dependsOn": []
+    }
+  ],
+  "evidence": []
+}

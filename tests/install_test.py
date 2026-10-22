@@ -51,6 +51,8 @@ class T(unittest.TestCase):
             "plugin update repo-orchestrator@forge-marketplace",
             "plugin install frontend-engineer@forge-marketplace",
             "plugin update frontend-engineer@forge-marketplace",
+            "plugin install backend-engineer@forge-marketplace",
+            "plugin update backend-engineer@forge-marketplace",
         ])
 
     def test_portable_skill_copied_and_claude_only_skill_not(self):
