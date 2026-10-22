@@ -1,4 +1,4 @@
-# Install the CJ Creator skills (Forge and repo-orchestrator) for Claude Code, and the
+# Install the CJ Creator skills (every plugin in the marketplace) for Claude Code, and the
 # portable skill for every other agent that reads ~/.agents/skills. Windows PowerShell 5.1 or pwsh.
 #
 #   irm https://raw.githubusercontent.com/CJCreator-New/CJ-Creator-Skills/main/install.ps1 | iex
@@ -72,7 +72,7 @@ function Install-Claude {
   }
   Invoke-Native 'marketplace add' { claude plugin marketplace add $Src }
   Invoke-Native 'marketplace update' { claude plugin marketplace update $Marketplace }
-  foreach ($plugin in 'forge', 'repo-orchestrator') {
+  foreach ($plugin in 'forge', 'repo-orchestrator', 'frontend-engineer', 'backend-engineer', 'e2e-engineer') {
     Invoke-Native "install $plugin" { claude plugin install "$plugin@$Marketplace" }
     Invoke-Native "update $plugin" { claude plugin update "$plugin@$Marketplace" }
   }

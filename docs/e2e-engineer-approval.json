@@ -1,0 +1,17 @@
+{
+  "plan": "docs/e2e-engineer-plan.md",
+  "sha256": "000425d9a5f61f257578f1794fd1dcfa26a734fe4131b50328e75d51459c45b9",
+  "planCommit": "306da9d",
+  "approvedBy": "csaravana.csk@gmail.com",
+  "approvedAt": "2026-10-22",
+  "approvedVia": "user approval in the session",
+  "decisions": {
+    "D1": "resolved: one new skill, e2e-engineer, in its own plugin folder",
+    "D2": "resolved: mobile in scope (mobile web, native Android, native iOS)",
+    "D3": "resolved: Figma is an optional connector",
+    "D4": "approved: this plan",
+    "D5": "open: default is doubles only",
+    "D6": "open: default is no devices beyond Chromium"
+  },
+  "scope": "v0.1 Foundation may start. Later phases need their own checkpoint."
+}

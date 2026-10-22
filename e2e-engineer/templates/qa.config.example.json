@@ -1,0 +1,75 @@
+{
+  "name": "orders-app (example)",
+  "targets": {
+    "web": {
+      "baseUrl": "http://localhost:4173"
+    },
+    "mobile-web": {
+      "baseUrl": "http://localhost:4173"
+    },
+    "android": {
+      "packageName": "com.example.orders",
+      "binary": "builds/orders.apk",
+      "versionName": "1.0.0",
+      "buildNumber": "1",
+      "binarySha256": "<sha256 from the build handover, optional>",
+      "flows": {
+        "sign-in-and-list": "flows/sign-in-and-list.yaml"
+      }
+    },
+    "ios": {
+      "bundleId": "com.example.orders",
+      "binary": "builds/Orders.ipa",
+      "versionName": "1.0.0",
+      "buildNumber": "1",
+      "flows": {
+        "sign-in-and-list": "flows/sign-in-and-list.yaml"
+      }
+    }
+  },
+  "start": "node server.mjs",
+  "healthUrl": "http://localhost:4173/health",
+  "db": {
+    "engine": "sqlite",
+    "name": "test_orders"
+  },
+  "allowlist": {
+    "hosts": [
+      "localhost"
+    ],
+    "packageNames": [
+      "com.example.orders"
+    ],
+    "bundleIds": [
+      "com.example.orders"
+    ],
+    "dbNamePattern": "^(test|qa)_"
+  },
+  "authorization": null,
+  "allowReset": false,
+  "timezones": [
+    "UTC"
+  ],
+  "loadLimits": {
+    "maxVirtualUsers": 4,
+    "maxDurationSeconds": 30,
+    "maxRequestsPerSecond": 20
+  },
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800
+    },
+    "phone": {
+      "width": 390,
+      "height": 844
+    },
+    "narrow": {
+      "width": 320,
+      "height": 640
+    }
+  },
+  "mobileProjects": {
+    "android": "app/android"
+  }
+}

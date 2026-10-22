@@ -1,0 +1,194 @@
+{
+  "app": "planted-app",
+  "purpose": "Test fixture for the e2e-engineer. Accounts, passwords and data are fake.",
+  "run": {
+    "planted": "PLANTED=all node server.mjs",
+    "clean": "PLANTED=none node server.mjs",
+    "port": 4173
+  },
+  "roles": {
+    "admin": "approves any order in its tenant, including over 1000",
+    "manager": "approves orders up to 1000 in its tenant, not its own",
+    "staff": "creates orders; cannot approve",
+    "outsider": "manager in tenant t2; must not see tenant t1 orders"
+  },
+  "routes": {
+    "ui": [
+      "#/login",
+      "#/orders",
+      "#/orders/:id"
+    ],
+    "api": [
+      "POST /api/login",
+      "GET /api/orders",
+      "POST /api/orders",
+      "GET /api/orders/:id",
+      "POST /api/orders/:id/approve",
+      "GET /health",
+      "GET /config.js"
+    ]
+  },
+  "defects": [
+    {
+      "planted": 1,
+      "flag": "dead-export-button",
+      "title": "Export button has no click handler",
+      "layer": "ui",
+      "implementedIn": "public/index.html",
+      "detector": "web-runner",
+      "expected": "dead control",
+      "detectedBy": [
+        "TC-UI-01"
+      ]
+    },
+    {
+      "planted": 2,
+      "flag": "missing-amount-validation",
+      "title": "Order creation accepts a negative or non-numeric total",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner against the contract",
+      "expected": "validation defect",
+      "detectedBy": [
+        "TC-ORD-01",
+        "TC-UI-08"
+      ]
+    },
+    {
+      "planted": 3,
+      "flag": "ui-only-approve-permission",
+      "title": "Approval permission is enforced only by hiding the button",
+      "layer": "api",
+      "implementedIn": "server.mjs and public/index.html",
+      "detector": "rbac-analyst (hidden, not denied) and api-runner (direct call succeeds)",
+      "expected": "authorization defect",
+      "detectedBy": [
+        "TC-APR-04"
+      ]
+    },
+    {
+      "planted": 4,
+      "flag": "object-level-access",
+      "title": "A manager reads and approves an order in another tenant",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner (object-level probe)",
+      "expected": "critical access defect",
+      "detectedBy": [
+        "TC-ORD-03"
+      ]
+    },
+    {
+      "planted": 5,
+      "flag": "approval-skips-director",
+      "title": "Orders over 1000 can be approved by a manager, so the director step is missing",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner (TC-APR-02) and e2e-runner through the UI (TC-E2E-01)",
+      "expected": "workflow defect",
+      "detectedBy": [
+        "TC-APR-02",
+        "TC-E2E-01"
+      ]
+    },
+    {
+      "planted": 6,
+      "flag": "approval-race",
+      "title": "Two concurrent approvals of one order both succeed",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner barrier test",
+      "expected": "invariant violated: one approval per order",
+      "detectedBy": [
+        "TC-APR-03"
+      ]
+    },
+    {
+      "planted": 7,
+      "flag": "contract-total-string",
+      "title": "Order detail returns total as a string; the contract says number",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner against openapi.json",
+      "expected": "contract defect",
+      "detectedBy": [
+        "TC-ORD-02"
+      ]
+    },
+    {
+      "planted": 8,
+      "flag": "hidden-failure-recovery",
+      "title": "A failed approval is shown as a success",
+      "layer": "ui",
+      "implementedIn": "public/index.html",
+      "detector": "web-runner with request interception",
+      "expected": "recovery defect",
+      "detectedBy": [
+        "TC-UI-02"
+      ]
+    },
+    {
+      "planted": 9,
+      "flag": "responsive-table-overflow",
+      "title": "The order table is clipped below 600 pixels",
+      "layer": "ui",
+      "implementedIn": "public/index.html (planted-css)",
+      "detector": "web-runner and mobile-runner (mobile web) at each viewport",
+      "expected": "layout defect",
+      "detectedBy": [
+        "TC-UI-05"
+      ]
+    },
+    {
+      "planted": 10,
+      "flag": "unlabelled-amount-input",
+      "title": "The total input has a placeholder but no label",
+      "layer": "ui",
+      "implementedIn": "public/index.html",
+      "detector": "web-runner (axe and keyboard)",
+      "expected": "accessibility defect",
+      "detectedBy": [
+        "TC-UI-03",
+        "TC-UI-08"
+      ]
+    },
+    {
+      "planted": 11,
+      "flag": null,
+      "title": "A test shares mutable order data with another test, so it is flaky",
+      "layer": "test-suite",
+      "implementedIn": "fixtures/planted-app/flaky-cases.json, loaded on top of the plan by the self-test",
+      "detector": "orchestrator flake rule",
+      "expected": "classified flaky, not passed",
+      "detectedBy": [
+        "TC-FLAKY-02"
+      ]
+    },
+    {
+      "planted": 12,
+      "flag": "small-touch-target",
+      "title": "The approve button is shorter than 24 pixels below 600 pixels wide",
+      "layer": "ui",
+      "implementedIn": "public/index.html (planted-css)",
+      "detector": "mobile-runner (mobile web)",
+      "expected": "accessibility defect",
+      "detectedBy": [
+        "TC-UI-04"
+      ]
+    },
+    {
+      "planted": 13,
+      "flag": null,
+      "title": "Android manifest is debuggable with cleartext allowed, and a key is hardcoded",
+      "layer": "static",
+      "implementedIn": "fixtures/planted-android-config",
+      "detector": "mobile-runner static check",
+      "expected": "security defect",
+      "detectedBy": [
+        "TC-SEC-01"
+      ]
+    }
+  ],
+  "cleanControl": "fixtures/planted-app with PLANTED=none, and fixtures/clean-android-config. Both must produce zero defects.",
+  "detectedByNote": "detectedBy lists the test cases that fail when the defect is switched on alone; the self-test checks this. Defect 11 is detected when TC-FLAKY-02 is classified flaky."
+}

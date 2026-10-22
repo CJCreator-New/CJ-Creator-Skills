@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Clean control for the static checks. Same shape as the planted manifest, with the flags off. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.orders">
+    <application
+        android:label="Orders"
+        android:debuggable="false"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false">
+        <activity android:name=".MainActivity" android:exported="true" />
+    </application>
+</manifest>

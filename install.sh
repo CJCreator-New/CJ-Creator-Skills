@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the CJ Creator skills (Forge and repo-orchestrator) for Claude Code, and the
+# Install the CJ Creator skills (every plugin in the marketplace) for Claude Code, and the
 # portable skills for every other agent that reads ~/.agents/skills.
 #
 #   curl -fsSL https://raw.githubusercontent.com/CJCreator-New/CJ-Creator-Skills/main/install.sh | sh
@@ -96,7 +96,7 @@ install_claude() {
   esac
   claude plugin marketplace add "$SRC"
   claude plugin marketplace update "$MARKETPLACE"
-  for plugin in forge repo-orchestrator frontend-engineer backend-engineer; do
+  for plugin in forge repo-orchestrator frontend-engineer backend-engineer e2e-engineer; do
     claude plugin install "$plugin@$MARKETPLACE"
     claude plugin update "$plugin@$MARKETPLACE"
   done

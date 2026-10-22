@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orders</title>
+<style>
+  :root { --ink: #1b1f24; --muted: #5b6670; --line: #d9dee3; --accent: #1f6feb; --bg: #ffffff; --error: #b42318; --ok: #067647; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --ink: #e6e8eb; --muted: #9aa4ae; --line: #333b44; --accent: #58a6ff; --bg: #0f1216; --error: #ff8a80; --ok: #6ce9a6; }
+  }
+  :root[data-theme="dark"] { --ink: #e6e8eb; --muted: #9aa4ae; --line: #333b44; --accent: #58a6ff; --bg: #0f1216; --error: #ff8a80; --ok: #6ce9a6; }
+  body { font-family: system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 16px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); }
+  .btn { display: inline-block; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 6px; padding: 8px 12px; font-size: 14px; cursor: pointer; }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  @media (max-width: 600px) { .btn { min-height: 44px; min-width: 44px; } }
+  input { font-size: 16px; padding: 6px; }
+  .row { margin: 8px 0; }
+  .error { color: var(--error); }
+  .ok { color: var(--ok); }
+  .muted { color: var(--muted); }
+</style>
+<style id="planted-css"></style>
+</head>
+<body>
+<main id="app"></main>
+<script src="/config.js"></script>
+<script>
+  const app = document.getElementById('app');
+  const on = (flag) => (window.PLANTED || []).includes(flag);
+  const state = {
+    token: sessionStorage.getItem('token'),
+    user: JSON.parse(sessionStorage.getItem('user') || 'null'),
+  };
+
+  // Defect styles are added only when their flag is on, so the clean control has none.
+  function plantedCss() {
+    let css = '';
+    if (on('responsive-table-overflow')) {
+      css += '@media (max-width: 600px) { .table-wrap { overflow: hidden; } table { min-width: 700px; } body { overflow-x: hidden; } }';
+    }
+    if (on('small-touch-target')) {
+      css += '@media (max-width: 600px) { .btn { min-height: 0; min-width: 0; padding: 2px 6px; font-size: 10px; } }';
+    }
+    return css;
+  }
+  document.getElementById('planted-css').textContent = plantedCss();
+
+  function escape(text) {
+    return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  async function api(path, options = {}) {
+    const headers = { 'content-type': 'application/json' };
+    if (state.token) headers.authorization = `Bearer ${state.token}`;
+    const res = await fetch(path, { ...options, headers });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ? body.error.message : `HTTP ${res.status}`);
+    return body;
+  }
+
+  function route() {
+    const hash = location.hash || '#/orders';
+    if (!state.token && hash !== '#/login') {
+      location.hash = '#/login';
+      return;
+    }
+    if (hash === '#/login') return renderLogin();
+    const detail = hash.match(/^#\/orders\/(.+)$/);
+    if (detail) return renderDetail(decodeURIComponent(detail[1]));
+    return renderOrders();
+  }
+
+  function renderLogin() {
+    app.innerHTML = `
+      <h1>Sign in</h1>
+      <form id="login">
+        <div class="row"><label>Username <input name="username" autocomplete="username"></label></div>
+        <div class="row"><label>Password <input name="password" type="password" autocomplete="current-password"></label></div>
+        <div class="row"><button class="btn" type="submit">Sign in</button></div>
+        <p id="msg" class="error" role="alert"></p>
+      </form>`;
+    document.getElementById('login').onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      try {
+        const body = await api('/api/login', {
+          method: 'POST',
+          body: JSON.stringify({ username: form.username.value, password: form.password.value }),
+        });
+        state.token = body.token;
+        state.user = body.user;
+        sessionStorage.setItem('token', body.token);
+        sessionStorage.setItem('user', JSON.stringify(body.user));
+        location.hash = '#/orders';
+      } catch (error) {
+        document.getElementById('msg').textContent = error.message;
+      }
+    };
+  }
+
+  async function renderOrders() {
+    const { orders } = await api('/api/orders');
+    const totalField = on('unlabelled-amount-input')
+      ? '<input name="total" type="number" placeholder="Total">'
+      : '<label>Total <input name="total" type="number"></label>';
+    app.innerHTML = `
+      <h1>Orders</h1>
+      <p><button class="btn" id="export" type="button">Export</button>
+         <a href="#/login" id="logout" class="muted">Sign out</a></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Item</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody>
+            ${orders.map((o) => `<tr><td><a href="#/orders/${escape(o.id)}">${escape(o.id)}</a></td><td>${escape(o.item)}</td><td>${escape(o.total)}</td><td>${escape(o.status)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <h2>New order</h2>
+      <form id="create">
+        <div class="row"><label>Item <input name="item"></label></div>
+        <div class="row">${totalField}</div>
+        <div class="row"><button class="btn" type="submit">Create</button></div>
+        <p id="msg" class="error" role="alert"></p>
+      </form>`;
+
+    document.getElementById('logout').onclick = () => {
+      sessionStorage.clear();
+      state.token = null;
+      state.user = null;
+    };
+    if (!on('dead-export-button')) {
+      document.getElementById('export').onclick = () => {
+        const blob = new Blob([JSON.stringify(orders, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'orders.json';
+        link.click();
+      };
+    }
+    document.getElementById('create').onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      try {
+        await api('/api/orders', {
+          method: 'POST',
+          body: JSON.stringify({ item: form.item.value, total: Number(form.total.value) }),
+        });
+        renderOrders();
+      } catch (error) {
+        document.getElementById('msg').textContent = error.message;
+      }
+    };
+  }
+
+  async function renderDetail(id) {
+    let order;
+    try {
+      ({ order } = await api(`/api/orders/${encodeURIComponent(id)}`));
+    } catch (error) {
+      app.innerHTML = `<p class="error" role="alert">${escape(error.message)}</p><a href="#/orders">Back to orders</a>`;
+      return;
+    }
+    // The UI hides the approve control for roles that cannot approve. Hiding is not enforcement.
+    const canApprove = ['manager', 'admin'].includes(state.user.role) && order.status === 'pending';
+    app.innerHTML = `
+      <h1>Order ${escape(order.id)}</h1>
+      <p>${escape(order.item)} · <span data-testid="total">${escape(order.total)}</span> · <span data-testid="status">${escape(order.status)}</span></p>
+      <p class="muted" data-testid="approvals">Approvals: ${escape(order.approvals)}</p>
+      ${canApprove ? '<button class="btn" id="approve" type="button">Approve</button>' : ''}
+      <p id="msg" role="status"></p>
+      <a href="#/orders">Back to orders</a>`;
+    const button = document.getElementById('approve');
+    if (!button) return;
+    button.onclick = async () => {
+      const msg = document.getElementById('msg');
+      msg.className = '';
+      msg.textContent = '';
+      try {
+        await api(`/api/orders/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+        renderDetail(id);
+      } catch (error) {
+        if (on('hidden-failure-recovery')) {
+          // Defect: a failed approval is shown as a success, and the control is removed.
+          msg.className = 'ok';
+          msg.textContent = 'Approved';
+          button.hidden = true;
+          return;
+        }
+        msg.className = 'error';
+        msg.textContent = `Could not approve: ${error.message}`;
+      }
+    };
+  }
+
+  window.addEventListener('hashchange', route);
+  route();
+</script>
+</body>
+</html>

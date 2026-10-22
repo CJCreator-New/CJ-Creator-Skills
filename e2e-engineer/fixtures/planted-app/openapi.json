@@ -1,0 +1,131 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Orders fixture API",
+    "version": "1.0.0",
+    "description": "Contract for the planted-app fixture. Money is a number of currency units."
+  },
+  "paths": {
+    "/api/login": {
+      "post": {
+        "summary": "Sign in",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Login" } } }
+        },
+        "responses": {
+          "200": { "description": "Signed in", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } } },
+          "401": { "description": "Wrong username or password", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "summary": "List orders visible to the caller in its tenant",
+        "security": [{ "bearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Orders",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "orders": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthenticated" }
+        }
+      },
+      "post": {
+        "summary": "Create an order owned by the caller",
+        "security": [{ "bearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewOrder" } } }
+        },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } },
+          "400": { "description": "Body is not valid JSON", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "$ref": "#/components/responses/Unauthenticated" },
+          "422": { "description": "Validation failed; error.field names the field", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/orders/{id}": {
+      "get": {
+        "summary": "Read one order in the caller's tenant",
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Order", "content": { "application/json": { "schema": { "type": "object", "properties": { "order": { "$ref": "#/components/schemas/Order" } } } } } },
+          "401": { "$ref": "#/components/responses/Unauthenticated" },
+          "404": { "description": "No such order in the caller's tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/orders/{id}/approve": {
+      "post": {
+        "summary": "Approve a pending order",
+        "description": "Managers approve orders up to 1000 in their tenant, not their own. Orders over 1000 need an admin. Approval is one-time: a second approval returns 409.",
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Approved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Order" } } } },
+          "401": { "$ref": "#/components/responses/Unauthenticated" },
+          "403": { "description": "Role, ownership or director rule forbids it", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "No such order in the caller's tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "The order is not pending", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": { "type": "http", "scheme": "bearer" }
+    },
+    "responses": {
+      "Unauthenticated": { "description": "Sign-in required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Login": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": { "username": { "type": "string" }, "password": { "type": "string" } }
+      },
+      "Session": {
+        "type": "object",
+        "required": ["token", "user"],
+        "properties": {
+          "token": { "type": "string" },
+          "user": { "type": "object", "properties": { "id": { "type": "string" }, "username": { "type": "string" }, "role": { "type": "string" } } }
+        }
+      },
+      "NewOrder": {
+        "type": "object",
+        "required": ["item", "total"],
+        "properties": {
+          "item": { "type": "string", "minLength": 1 },
+          "total": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": ["id", "item", "total", "status", "owner", "approvals"],
+        "properties": {
+          "id": { "type": "string" },
+          "item": { "type": "string" },
+          "total": { "type": "number" },
+          "status": { "type": "string", "enum": ["pending", "approved"] },
+          "owner": { "type": "string" },
+          "approvals": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": { "code": { "type": "string" }, "message": { "type": "string" }, "field": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}
