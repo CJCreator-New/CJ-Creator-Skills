@@ -42,7 +42,7 @@ export function writeLedger(path, ledger) {
 }
 
 // Records what intake found. A refused run is recorded too, so the status can say why nothing ran.
-export function recordIntake(ledger, { configName, safety, build, probes, readiness, targets, now }) {
+export function recordIntake(ledger, { configName, safety, build, probes, readiness, targets, integrations = {}, now }) {
   ledger.intake = {
     configName,
     recordedAt: now,
@@ -51,19 +51,23 @@ export function recordIntake(ledger, { configName, safety, build, probes, readin
     probes,
     targets: targets || {},
     readiness: readiness || {},
+    integrations,
   };
   return ledger;
 }
 
 // The native binary is hashed by the ledger. It must belong to an Android or iOS target in scope.
-export async function recordBinary(ledger, { target, file, versionName, buildNumber, now }) {
+export async function recordBinary(ledger, { target, file, versionName, buildNumber, previous = false, now }) {
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('a binary cannot be recorded before a run is allowed');
   if (!['android', 'ios'].includes(target)) throw new Error(`binaries belong to android or ios, not ${target}`);
   if (!ledger.intake.targets[target]) throw new Error(`target ${target} is not in scope for this run`);
   if (!versionName || !buildNumber) throw new Error('versionName and buildNumber are required');
   const described = await describeBinary(file);
-  const entry = { target, ...described, versionName, buildNumber, recordedAt: now };
-  ledger.binaries = ledger.binaries.filter((b) => !(b.target === target && b.file === file));
+  // The previous release is kept apart, for the compatibility check: it is installed first, then the
+  // build under test is installed over it.
+  const role = previous ? 'previous' : 'current';
+  const entry = { target, role, ...described, versionName, buildNumber, recordedAt: now };
+  ledger.binaries = ledger.binaries.filter((b) => !(b.target === target && (b.file === file || (b.role ?? 'current') === role)));
   ledger.binaries.push(entry);
   return entry;
 }
@@ -90,7 +94,8 @@ function journeyTests(ledger, journeyId) {
 export function status(ledger) {
   const outOfScope = ledger.testCases.filter((tc) => !inScope(tc)).map((tc) => ({ id: tc.id, reason: tc.outOfScope }));
   const result = gate(ledger);
-  return outOfScope.length > 0 ? { ...result, outOfScope } : result;
+  const doubles = doublePasses(ledger);
+  return { ...result, ...(outOfScope.length > 0 ? { outOfScope } : {}), ...(doubles.length > 0 ? { passedAgainstDoubles: doubles } : {}) };
 }
 
 function gate(ledger) {
@@ -113,7 +118,7 @@ function gate(ledger) {
     return { status: 'BLOCKED', reasons: ['the plan changed after it was approved; freeze and approve the new version'] };
   }
 
-  const reasons = [];
+  const reasons = activeStops(ledger).map((stop) => `stopped (${stop.runner}): ${stop.reason}`);
   for (const [target, readiness] of Object.entries(ledger.intake.readiness)) {
     if (readiness.status === 'blocked') reasons.push(`${target} is blocked: ${readiness.reason}`);
   }
@@ -157,10 +162,27 @@ function gate(ledger) {
   return { status: 'PASS', reasons: [] };
 }
 
+// A test case that names third-party integrations ran against doubles unless every one of them was
+// live in this run (G25). A test case with no integrations has no mode.
+export function integrationMode(ledger, testCase) {
+  const names = testCase.integrations || [];
+  if (names.length === 0) return undefined;
+  return names.every((name) => ledger.intake?.integrations?.[name] === 'live') ? 'live' : 'double';
+}
+
+// The in-scope test cases whose current pass was against doubles. A double pass is never a live pass.
+export function doublePasses(ledger) {
+  return ledger.testCases.filter((tc) => {
+    if (!inScope(tc)) return false;
+    const { state, run } = testState(ledger, tc.id);
+    return state === 'passed' && ledger.runs.find((r) => r.id === run)?.mode === 'double';
+  }).map((tc) => tc.id);
+}
+
 // Appends one run for a test case. The run is bound to the current build and to the test case as it is
 // now, so a later change to either makes it stale. The result is one of the run states; a failure that
 // needs confirmation is not a failure.
-export function recordRun(ledger, { testCase, result, reasons = [], failures = [], evidence = [], now }) {
+export function recordRun(ledger, { testCase, result, reasons = [], failures = [], evidence = [], now, mode = undefined }) {
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('a run cannot be recorded for a refused run');
   const tc = ledger.testCases.find((t) => t.id === testCase);
   if (!tc) throw new Error(`test case ${testCase} is not in the plan`);
@@ -175,6 +197,7 @@ export function recordRun(ledger, { testCase, result, reasons = [], failures = [
     evidence,
     build: ledger.intake.build.treeHash,
     testHash: testHash(tc),
+    ...((mode ?? integrationMode(ledger, tc)) ? { mode: mode ?? integrationMode(ledger, tc) } : {}),
     at: now,
   };
   ledger.runs.push(run);
@@ -211,11 +234,13 @@ export function recordDefect(ledger, { testCase, failures, now }) {
 // Records a runner's results: one run each, a defect for each confirmed failure, then the defect
 // evaluation. A failure on a test case that also passed on this build is flaky (G23): no defect is
 // opened for it, and an open defect on that test case is marked flaky for triage.
-export function recordResults(ledger, results, { now }) {
+export function recordResults(ledger, results, { now, stops = [] }) {
   const opened = [];
   const flaky = [];
+  const runOf = new Map();
   for (const result of results) {
-    recordRun(ledger, { testCase: result.id, result: result.result, reasons: result.reasons, failures: result.failures, evidence: result.evidence, now });
+    const run = recordRun(ledger, { testCase: result.id, result: result.result, reasons: result.reasons, failures: result.failures, evidence: result.evidence, now, mode: result.mode });
+    runOf.set(result.id, run.id);
     if (testState(ledger, result.id).state === 'flaky') {
       flaky.push(result.id);
       continue;
@@ -225,8 +250,25 @@ export function recordResults(ledger, results, { now }) {
     const defect = recordDefect(ledger, { testCase: result.id, failures: result.failures, now });
     if (ledger.defects.length > before) opened.push(defect.id);
   }
+  // Each stop names the runs it blocked, so the gate can tell when the stopped test cases ran again.
+  const recordedStops = stops.map((stop) => ({ ...stop, at: now, build: ledger.intake.build.treeHash, runs: stop.tests.map((id) => runOf.get(id)).filter(Boolean) }));
+  ledger.stops = [...(ledger.stops || []), ...recordedStops];
   const transitions = evaluateDefects(ledger, { now });
-  return { opened, flaky, transitions };
+  return { opened, flaky, transitions, stops: recordedStops.map(({ runner, reason, tests }) => ({ runner, reason, tests })) };
+}
+
+// The stops that still hold: recorded on the current build, with a stopped test case whose latest run
+// is still the blocked run the stop made.
+export function activeStops(ledger) {
+  const build = ledger.intake?.build?.treeHash;
+  return (ledger.stops || []).filter((stop) => {
+    if (stop.build !== build) return false;
+    return (stop.runs || []).some((runId) => {
+      const run = ledger.runs.find((r) => r.id === runId);
+      const latest = [...ledger.runs].reverse().find((r) => r.testCase === run?.testCase);
+      return latest && latest.id === runId;
+    });
+  });
 }
 
 function parseFlags(args) {
@@ -288,7 +330,7 @@ async function main(argv) {
     output = approvePlan(ledger, { approver: flags.approver, approvedAt: flags.date || now.slice(0, 10) });
   } else if (command === 'binary') {
     const [target, file] = positional;
-    output = await recordBinary(ledger, { target, file, versionName: flags.version, buildNumber: flags.build, now });
+    output = await recordBinary(ledger, { target, file, versionName: flags.version, buildNumber: flags.build, previous: flags.previous === 'true', now });
   } else if (command === 'triage') {
     const [id] = positional;
     output = triageDefect(ledger, id, { severity: flags.severity, owner: flags.owner, rootCause: flags['root-cause'], disposition: flags.disposition, rationale: flags.rationale, by: flags.by, now });

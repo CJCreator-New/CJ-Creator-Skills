@@ -10,6 +10,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readLedger, recordResults, writeLedger } from './ledger.mjs';
 import { selectTestCases } from './results.mjs';
+import { createStopper, healthStop } from './stops.mjs';
 import { planDigest } from './plan.mjs';
 import { validateRun } from './safety.mjs';
 import { queryDatabase, resetDatabase, validateTarget } from './env.mjs';
@@ -31,7 +32,7 @@ export function createContext({ ledger, config, root, base, env, fetchImpl = fet
     } catch {
       json = null;
     }
-    return { status: res.status, body: json };
+    return { status: res.status, body: json, headers: Object.fromEntries(res.headers) };
   }
 
   async function request(method, path, options) {
@@ -73,10 +74,11 @@ export function createContext({ ledger, config, root, base, env, fetchImpl = fet
     }
   }
 
-  return { request, sessionFor, query, probesAllowed, env };
+  const probeLimit = config.authorization?.maxRequests ?? 20;
+  return { request, sessionFor, query, probesAllowed, probeLimit, env };
 }
 
-export async function runApi({ ledgerPath, configPath, root, base, env, now, only = null }) {
+export async function runApi({ ledgerPath, configPath, root, base, env, now, only = null, health = undefined }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -99,8 +101,10 @@ export async function runApi({ ledgerPath, configPath, root, base, env, now, onl
         }
       : null;
 
-  const results = await runSuite({ testCases, ledger, ctx, reset });
-  const recorded = recordResults(ledger, results, { now });
+  const held = await healthStop({ config, testCases, runner: 'api', ...(health ? { check: health } : {}) });
+  const stopper = createStopper({ config, ledger, root, runner: 'api' });
+  const results = held ? held.results : await runSuite({ testCases, ledger, ctx, reset, stopper });
+  const recorded = recordResults(ledger, results, { now, stops: held ? held.stops : stopper.stops() });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};
@@ -114,6 +118,7 @@ export async function runApi({ ledgerPath, configPath, root, base, env, now, onl
     opened: recorded.opened,
     flaky: recorded.flaky,
     transitions: recorded.transitions,
+    stops: recorded.stops,
   };
 }
 

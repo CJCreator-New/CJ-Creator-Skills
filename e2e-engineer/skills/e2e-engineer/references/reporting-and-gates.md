@@ -34,11 +34,15 @@ Coverage is reported as separate measures, never as one percentage: requirements
 The gate status is computed by `status()` in the ledger, with this precedence:
 
 1. Any in-scope test case whose current state is failed, or any open Critical or High defect, gives `FAIL`.
-2. Otherwise, intake not run, a refused run, an unapproved plan, a plan changed after approval, a blocked target in scope, or a blocked test case on a P0 journey gives `BLOCKED`, with the reason.
+2. Otherwise, intake not run, a refused run, an unapproved plan, a plan changed after approval, a stop condition that still holds, a blocked target in scope, or a blocked test case on a P0 journey gives `BLOCKED`, with the reason. A stop holds until the test cases it stopped run again on the same build.
 3. Otherwise, no journeys, a P0 journey without a current pass on each of its test cases, any other in-scope test case without a current pass (not run, stale, flaky, needs-confirmation), or any open defect gives `PARTIALLY TESTED`.
 4. Otherwise `PASS WITH ACCEPTED RISKS` when an open defect has a named risk acceptance, and `PASS` when no defect is open.
 
 A test case's state is read from its runs on the current build, under its current definition. A run from an earlier build, or from before the test case changed, is `stale`. A test case that passed and failed on the same build is `flaky`. Test cases the plan takes out of scope (`outOfScope`, with the reason) are not run, do not count, and are listed with the status.
+
+## Doubles and live integrations
+
+A test case that names `integrations` runs against doubles unless every one of them is `live` in the config, with a sandbox URL on the allowlist (G25). Each run records its mode. The status lists the current passes that were against doubles under `passedAgainstDoubles`, and the report lists them apart: a pass against a double is never reported as a live pass.
 
 ## Accepted risks
 

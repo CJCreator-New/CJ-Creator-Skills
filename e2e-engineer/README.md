@@ -2,29 +2,35 @@
 
 End-to-end testing for an application, built from its user journeys. It discovers the screens, the API and the database, plans the journeys behind an approval gate, then verifies them through the browser, mobile web, native Android and iOS, the API and the data layer. It reports a release status from evidence, not from test counts.
 
-**Version 1.0.** What it does:
+**Version 1.1.** What it does:
 
 - **Intake and safety.** The run is refused unless every target, host, package, bundle and database is on the config allowlist. Production-looking names are refused without an override. Security probes are refused unless authorization is recorded.
-- **Build identity and tool readiness.** The commit and a fingerprint of the working tree. Native binaries are identified by their SHA-256. A target whose tools are missing is `blocked` with the reason. Nothing is installed.
-- **Analysis and plan.** Four read-only analysts (`flow-analyst`, `rbac-analyst`, `ux-analyst`, `test-strategist`). A plan check, a freeze and an approval bound to the frozen digest. A change to any plan item makes the approval stale.
+- **Build identity and tool readiness.** The commit and a fingerprint of the working tree. Native binaries, including simulator `.app` bundles, are identified by their SHA-256. A target whose tools are missing is `blocked` with the reason. Nothing is installed.
+- **Target lifecycle (`target.mjs`).** Starts the app with the config's `start` command and waits for `healthUrl`, checks health, and stops it. Without `start` or `healthUrl`, a web target is blocked: the skill does not guess. It adds the state folder to the target's `.gitignore` only when the user agrees.
+- **Stop conditions (`stops.mjs`).** A run stops, and the gate reads BLOCKED with the reason, when the environment fails its health check twice, over 30% of a lane fails on infrastructure, a device disconnects during a mutating journey, a security probe fails (mutating test cases stop), or the run budget in minutes, runs or reported tokens is spent.
+- **Evidence retention (`evidence.mjs`).** After each run, the oldest evidence folders are removed beyond the cap, except what a current run or an open defect points to. Each removal is in the report.
+- **Model routing and telemetry (`route.mjs`, `telemetry.mjs`).** Copies of backend-engineer's, checked for identity. The skill dispatches each agent with the tier `route.mjs` returns, and the run budget reads the telemetry.
+- **Analysis and plan.** Read-only analysts, dispatched in order: `ux-analyst`, `flow-analyst`, `rbac-analyst`, `test-strategist`, each with the ids the earlier ones produced. A plan check, a freeze and an approval bound to the frozen digest. A change to any plan item makes the approval stale. The analysts were trialled on an unfamiliar copy of the fixture app; see `docs/e2e-engineer-analyst-trial.md`.
 - **Artifact package.** Files 00 to 11 and five data files, rendered deterministically from the ledger. Coverage is reported as separate measures, with no combined percentage.
 - **Test database control (`env.mjs`).** A test database is validated against its run marker before any write. It is seeded only when it has no tables, reset only when the config allows it, and refused when its marker names another database. Reset restores the seed and checks the row counts.
 - **Executable checks (`checks.mjs`).** An api or db test case lists its checks: a request as a role, the status and the JSON it must return, concurrent requests with their invariant, or a read-only query. Credentials are environment-variable names, never values. A missing credential blocks; it does not fail.
+- **Security probes.** Presets for a tampered session, a missing session, injection markers, rate limiting and CORS, non-destructive and bounded, only with a recorded authorization. A failed probe stops the mutating test cases that follow.
 - **API runner (`run-api.mjs`).** Runs the implemented api and db test cases against a target. Each mutating case starts from a fresh seed. Each run is recorded against the current build, and each confirmed failure opens one defect. A derived, unconfirmed requirement's failure is `needs-confirmation`, not a defect.
-- **Browser runner (`run-web.mjs`).** Drives the web and mobile-web test cases in Chromium, through the interface only: each control is found by its role, name or label, and the database is reset before each test case. Steps cover sign-in, fills, clicks, downloads, intercepted failures, viewport clipping, touch-target size and a built-in accessibility scan. Each test case stores a screenshot and a redacted log.
+- **Browser runner (`run-web.mjs`).** Drives the web and mobile-web test cases in Chromium, through the interface only: each control is found by its role, name or label, and the database is reset before each test case. Steps cover sign-in, fills, clicks, downloads, intercepted failures, viewport clipping, touch-target size, keyboard reach, the full axe-core scan (when the repository provides axe-core), and a pixel comparison with a design reference. Each test case runs on a fixed clock and time zone when the config sets them, and stores a screenshot and a redacted log.
 - **Redaction (`redact.mjs`).** Every stored value is redacted before it is written: credential headers, credential keys at any depth, bearer and token-shaped strings, and every password value the run was given. Playwright traces are not stored, because they carry credentials that cannot be reliably removed.
 - **Cross-layer runner (`run-e2e.mjs`, `e2e-runner` agent).** An e2e test case acts in the UI, waits for the request the UI sends and checks its status, then checks the API and the stored data in the same test case. The failing step names the layer that disagrees.
-- **Mobile checks (`run-mobile.mjs`).** Static checks read the Android project's manifest and resources, with no device: a debuggable application or a hardcoded secret fails, and a secret is reported by its file and name, never by its value. Native Android and iOS cases run Maestro flows on an attached device or simulator. Each native run uses the binary recorded in the ledger, and that binary must match the build handover hash in the config. A missing device, tool, binary, flow or mismatch blocks the case, with the reason.
-- **Triage and handoff (`remediation.mjs`, `triage` agent).** Each defect gets a severity, an owner, a root cause and a disposition (the app or the test). A defect on a P0 journey or an access-control case is at least High, and a Critical defect needs an independent second review. Duplicates merge. A handoff packet gives the owner the requirement, the reproduction, what was observed, the acceptance criteria and the regression set, with no credential in it. The skill never writes the fix.
+- **Mobile checks (`run-mobile.mjs`).** Static checks read the Android project's manifest and resources, with no device: a debuggable application or a hardcoded secret fails, and a secret is reported by its file and name, never by its value. Native Android and iOS cases run Maestro flows on every device in the device matrix, install the build (Android `adb`, iOS simulator `simctl`), run previous-version compatibility (the last release, then the new build over it), read the Android accessibility tree, and store a screenshot and a redacted log from each device. Each native run uses the binary recorded in the ledger, and that binary must match the build handover hash in the config. A missing device, tool, binary, flow or mismatch blocks the case, with the reason; a device lost mid-journey stops the run.
+- **Triage and handoff (`remediation.mjs`, `triage` agent).** Each defect gets a severity, an owner, a root cause and a disposition (the app or the test). A defect on a requirement tagged with a risk (another tenant's data, an auth bypass, exposed or lost data, money) is Critical; one on a P0 journey or an access-control case is at least High; and a Critical defect needs an independent second review. Duplicates merge. A handoff packet gives the owner the requirement, the reproduction, what was observed, the acceptance criteria and the regression set, with no credential in it. The skill never writes the fix.
 - **Retest and regression (`retest.mjs`).** Test cases run by ID, through the runner for each layer. A fix is a new build. A defect moves to Retest Passed when its own test cases pass on that build, and closes only after its regression set passes there too. A failure first seen on the fixed build is a regression and keeps the defect open; a failure that an earlier defect already covers does not.
 - **Flaky and stale results.** A test case that passed and failed on the same build is `flaky`, never passed, and opens no defect on its own. A run from an earlier build, or from before the test case changed, is `stale`.
 - **Load (`run-perf.mjs`, `perf-runner` agent).** Opt-in, read-only load with a fixed number of users, a fixed time and a capped rate. It refuses to start without `loadLimits` in the config and `E2E_ALLOW_LOAD=1` for the run. A threshold the team has not confirmed is proposed, so a breach of it is `needs-confirmation`.
+- **Doubles and live integrations.** A test case that names integrations runs against doubles unless each is live in the config, with a sandbox on the allowlist. Each run records its mode, and a pass against a double is never reported as a live pass.
 - **Scope.** A test case the plan takes out of scope (`outOfScope`, with the reason) is not run and does not count toward the gate. The status and the report list it with its reason.
 - **Gate.** A P0 journey is verified only when every in-scope test case linked to it has a current pass. An open Critical or High defect is a FAIL until it closes, and any open defect keeps the gate from PASS. A named person can accept the risk of one open defect, with the reason; the gate then reads PASS WITH ACCEPTED RISKS. Precedence: FAIL, then BLOCKED, then PARTIALLY TESTED, then PASS WITH ACCEPTED RISKS or PASS.
 - **Final report.** Files 00 to 11 and the data files, with a manifest of the ledger hash and each file's hash. `artifacts.mjs verify` renders the package again from the ledger and reports any difference.
 - **Self-test (`self-test.mjs`).** Runs the plugin on its own fixture through the same intake, runners, ledger and report a real run uses. It scores recall on the 13 planted defects, requires no finding on the clean control, and says which suites ran.
-- **Guard.** While a run is active, a write is allowed only under `.claude/e2e-engineer/`, the ledger is never written by a tool, secret files are never written, and the analysts are read-only.
-- **Planted-app fixture.** A small order-approval app on SQLite, with 11 switchable app-side defects, and a clean control (`PLANTED=none`). The worked plan has 15 requirements, 9 journeys and 23 test cases, all implemented; the two native cases are out of scope for this release. `flaky-cases.json` adds the two test cases that show planted defect 11. The manifest names the test cases that detect each planted defect.
+- **Guard.** While a run is active, a write is allowed only under `.claude/e2e-engineer/`, by a file tool or a shell command (redirections, tee, in-place edits, file commands); git changes and package installs are denied; the ledger is never written by a tool; secret files are never written; and the analysts are read-only.
+- **Planted-app fixture.** A small order-approval app on SQLite, with 11 switchable app-side defects, and a clean control (`PLANTED=none`). The worked plan has 17 requirements, 10 journeys and 26 test cases, all implemented, with security probes and a keyboard check; the two native cases are out of scope for this release. `flaky-cases.json` adds the two test cases that show planted defect 11. The manifest names the test cases that detect each planted defect.
 
 The full plan is in `docs/e2e-engineer-plan.md`, and the approval of that plan is in `docs/e2e-engineer-approval.json`. The approvals of the fixture's test plan are in `docs/e2e-engineer-run-plan-approval.json`.
 
@@ -33,7 +39,7 @@ The full plan is in `docs/e2e-engineer-plan.md`, and the approval of that plan i
 ```
 .claude-plugin/plugin.json        manifest
 hooks/
-  hooks.json                      PreToolUse guard for Write, Edit, MultiEdit, NotebookEdit
+  hooks.json                      PreToolUse guard for Write, Edit, MultiEdit, NotebookEdit and Bash
   guard.mjs                       the guard: inert unless a run is active
 skills/e2e-engineer/SKILL.md      the skill: the v1.0 steps
 skills/e2e-engineer/references/   discovery and oracles, design references, strategy and approval,
@@ -54,6 +60,11 @@ agents/
   triage.md                       severity, owner, root cause, duplicates, flaky causes (read-only)
 scripts/
   intake.mjs                      intake: safety, build identity, probes, ledger, active marker
+  target.mjs                      start, health check and stop of the target; the consented .gitignore line
+  stops.mjs                       stop conditions: health, infrastructure rate, lost device, failed probe, budget
+  evidence.mjs                    evidence retention cap, keeping current and open-defect evidence
+  route.mjs                       model tier per dispatch (copy of backend-engineer's)
+  telemetry.mjs                   stage timings, dispatches and reported tokens (copy of backend-engineer's)
   safety.mjs                      target allowlist, production refusal, authorization, reset rules
   probe.mjs                       tool and device readiness, per target
   binary.mjs                      SHA-256 identity of APK, AAB and IPA files
@@ -154,9 +165,9 @@ The run state lives in `.claude/e2e-engineer/` in the target repository. The plu
 
 ## What the fixture shows
 
-Measured with the command-line sequence above, on the fixture plan at digest `67892a13`:
+Measured with the command-line sequence above, on the fixture plan at digest `8af7a30e`, with the probes authorized against the fixture server:
 
-- **Clean control** (`PLANTED=none`, `clean-android-config`): API 10 of 10, browser 8 of 8, cross-layer 2 of 2, static 1 of 1. No defect is opened. The gate reads **PASS**, with TC-AND-01 and TC-IOS-01 listed as out of scope.
+- **Clean control** (`PLANTED=none`, `clean-android-config`): API 12 of 12 (including the two security probe cases), browser 9 of 9, cross-layer 2 of 2, static 1 of 1. No defect is opened. The gate reads **PASS**, with TC-AND-01 and TC-IOS-01 listed as out of scope.
 - **Planted build** (`PLANTED=all`, `planted-android-config`): 14 defects are opened, and the gate reads FAIL. The API suite finds planted defects 2, 3, 4, 5, 6 and 7; the browser suite finds 1, 8, 9, 10 and 12 (TC-UI-08 also fails, on defects 2 and 10); the cross-layer TC-E2E-01 finds 5 through the UI, at the request the page sends (`200, expected 403`); the static check finds 13. The report renders and verifies against the ledger.
 - **Self-test** (`self-test.mjs` with Chromium): verdict **pass**, 13 of 13 planted defects, no finding on the clean control, no unexplained failure on the planted build, defect 11 classified flaky, and the report reproduces. With `--isolate`, each defect switched on alone fails exactly the test cases the manifest names. Without Chromium, the verdict is `incomplete`: 8 of 13, with the browser suites named as not run.
 - **Remediation** (v0.6, measured then): DEF-006, the cross-tenant read, was triaged High (Medium is refused on a P0 journey), handed off, claimed, retested on a new build, and closed by its regression run. Results from the earlier build were reported as stale.
@@ -174,17 +185,17 @@ The five statuses follow the precedence in the plan (G19).
 ## Limits in v1.0
 
 - The analysts are prompts. Their output on a real repository has not been run here. The worked plan is hand-written in the shape they return.
-- Previous-version compatibility, the platform accessibility tree, and the device matrix are not run. They need devices and tools this environment does not have, and they are not built.
-- iOS flows run only on a simulator where the app is already installed. The runner installs Android binaries only.
+- No emulator or simulator runs in this environment, so the device matrix, compatibility, device evidence and the Android accessibility tree are tested with a stand-in command runner, not on a device. The iOS accessibility tree needs XCUITest and is not checked.
 - The fixture is a web app, so it has no native build. The native flow in the fixture is an example of the shape, and it cannot run here. The plan takes the native cases out of scope for this release (the user's decision, with D6 open), and the device path is covered by tests that inject a fake command runner.
 - Playwright is not installed by the plugin. It comes from the target repository, or from `browser.playwrightModule` in the config. Without it, the web targets are blocked, with the reason.
-- The built-in accessibility rules are limited to form-field names and button names. A fuller scan is a later addition.
-- The guard is a workflow guard, not a sandbox. It checks tool writes, not shell commands, so a shell redirection can still write a file it does not name.
+- The full accessibility scan needs axe-core in the target repository, or `browser.axeModule`. Without it, the built-in rules (form-field names, button names) and the keyboard check still run.
+- The design comparison is pixel by pixel. It needs the same viewport, data and clock as the reference.
+- The guard is a workflow guard, not a sandbox. It reads shell commands as text, so a program that writes files itself (a script, `node -e`) is not seen.
 - Triage is a prompt. The severity floor, the second review for Critical and the state rules are enforced by the ledger; the judgement inside them is the agent's and the user's.
 - A fix must arrive as a new build. A fix made only in the environment, on the same tree, shows as flaky and does not close the defect.
 - The regression set is the defect's journeys plus the P0 journeys. Test cases elsewhere are not rerun before a defect closes.
 - Load is client-side, read-only and small: no stress, soak or spike profiles, no load on writes, and no server-side metrics.
 - The self-test approves the fixture plan in its own scenario ledgers, as `e2e-engineer self-test (fixture plan)`. That approval covers the fixture only, never a user's repository.
 - Native self-tests do not run here: no emulator or simulator exists in this environment (M10). The static check runs everywhere.
-- Security probes are gated by the recorded authorization. The fixture has none, so its probes are refused. No probe is in the worked plan yet.
+- Security probes are gated by the recorded authorization. A config without one, such as the example, refuses them. The self-test authorizes probes against the fixture server it starts itself.
 - Approval records the approver as the name or identifier the user gives. The plan does not verify who they are.

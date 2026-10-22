@@ -16,7 +16,7 @@ import { clone, fixtureLedger, NOW, seededDatabase } from './helpers.mjs';
 import { createFixtureServer } from '../fixtures/planted-app/server.mjs';
 import { approvePlan, freezePlan, loadPlan } from '../scripts/plan.mjs';
 import { readLedger, status, writeLedger } from '../scripts/ledger.mjs';
-import { claimFix, handOff, triageDefect } from '../scripts/remediation.mjs';
+import { claimFix, handOff, reviewDefect, triageDefect } from '../scripts/remediation.mjs';
 import { loadPlaywright } from '../scripts/browser.mjs';
 import { runApi } from '../scripts/run-api.mjs';
 import { runPerf } from '../scripts/run-perf.mjs';
@@ -126,7 +126,8 @@ describe('a fixed defect is retested, and closes only after the regression run',
 
   test('triage, the handoff packet and the claim go through the ledger command', () => {
     const cli = (...a) => JSON.parse(execFileSync(process.execPath, [LEDGER_CLI, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
-    cli('triage', env.ledgerPath, 'DEF-001', '--severity', 'High', '--owner', 'backend-engineer', '--root-cause', 'GET /api/orders/:id does not check the tenant', '--by', 'triage');
+    cli('triage', env.ledgerPath, 'DEF-001', '--severity', 'Critical', '--owner', 'backend-engineer', '--root-cause', 'GET /api/orders/:id does not check the tenant', '--by', 'triage');
+    cli('review', env.ledgerPath, 'DEF-001', '--by', 'second-reviewer', '--verdict', 'confirmed');
     const handoff = cli('handoff', env.ledgerPath, 'DEF-001');
     assert.equal(handoff.handoff, 'HO-DEF-001-1');
     const packet = readFileSync(handoff.file, 'utf8');
@@ -142,7 +143,7 @@ describe('a fixed defect is retested, and closes only after the regression run',
     assert.deepEqual(result.ran, ['TC-ORD-03']);
     assert.equal(result.defect.status, 'Retest Passed');
     assert.equal(result.defect.regression.status, 'incomplete');
-    assert.equal(status(readLedger(env.ledgerPath)).status, 'FAIL', 'the High defect is still open');
+    assert.equal(status(readLedger(env.ledgerPath)).status, 'FAIL', 'the Critical defect is still open');
   });
 
   test('the regression run closes it when every regression test case passes', async () => {
@@ -171,7 +172,8 @@ describe('a regression first seen on the fixed build', () => {
     env = await environment(['object-level-access']);
     await runApi(env.args);
     env.edit((ledger) => {
-      triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
+      triageDefect(ledger, 'DEF-001', { severity: 'Critical', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
+      reviewDefect(ledger, 'DEF-001', { by: 'second-reviewer', verdict: 'confirmed', now: NOW });
       handOff(ledger, 'DEF-001', { now: NOW });
       claimFix(ledger, 'DEF-001', { by: 'backend-engineer', now: NOW });
     });

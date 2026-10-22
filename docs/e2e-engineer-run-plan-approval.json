@@ -36,7 +36,8 @@
     }
   ],
   "notCovered": [
-    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest."
+    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest.",
+    "The plan at digest 8af7a30e (pending above)."
   ],
   "decisions": {
     "recordedAt": "2026-10-22",
@@ -49,5 +50,10 @@
     ],
     "resultingDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
     "status": "approved with the plan at digest 529f3e90"
+  },
+  "pending": {
+    "planDigest": "8af7a30e4164c1c0b052d6a452aa146f56ec70e2f1f815dbffe26d229e484cb4",
+    "change": "The gap fixes add REQ-SEC-002 (tampered sessions and injection), REQ-UI-006 (keyboard), journey J-10, the probe test cases TC-SEC-02 and TC-SEC-03, the keyboard test case TC-UI-10, and the tenant-isolation risk on REQ-ORD-003, which makes its defects Critical.",
+    "status": "not approved: it needs the user's approval of this digest"
   }
 }

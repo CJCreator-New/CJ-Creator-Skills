@@ -27,9 +27,13 @@
 </head>
 <body>
 <main id="app"></main>
+<footer class="muted"><span data-testid="today"></span> · <span data-testid="zone"></span></footer>
 <script src="/config.js"></script>
 <script>
   const app = document.getElementById('app');
+  // The date and time zone the browser runs in, so a test can check the clock it fixed.
+  document.querySelector('[data-testid="today"]').textContent = new Date().toISOString().slice(0, 10);
+  document.querySelector('[data-testid="zone"]').textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const on = (flag) => (window.PLANTED || []).includes(flag);
   const state = {
     token: sessionStorage.getItem('token'),

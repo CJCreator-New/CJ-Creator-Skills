@@ -39,7 +39,7 @@
       "name": "e2e-engineer",
       "source": "./e2e-engineer",
       "description": "End-to-end test engineering: discovers the app and its user journeys, plans them behind an approval gate, verifies them through web, mobile web, native Android and iOS, cross-layer UI-to-API-to-database checks, the API and the database, then triages defects, hands them to their owners, retests each fix, and reports an evidence-based release status.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "license": "MIT",
       "keywords": ["e2e", "testing", "mobile", "browser", "api", "rbac", "orchestration"]
     }

@@ -37,6 +37,21 @@ export function findPlaywright({ root, config }) {
   };
 }
 
+// Finds axe-core for the full accessibility scan, the same way: config.browser.axeModule (a folder or
+// the axe.min.js file), or the repository's own node_modules. It is never installed.
+export function findAxe({ root, config }) {
+  const named = config.browser?.axeModule;
+  const fileIn = (path) => (path.endsWith('.js') ? path : join(path, 'axe.min.js'));
+  if (named) {
+    const path = fileIn(isAbsolute(named) ? named : resolve(root, named));
+    if (existsSync(path)) return { found: true, path, reason: null };
+    return { found: false, path: null, reason: `browser.axeModule ${path} does not exist` };
+  }
+  const found = findInNodeModules(root, 'axe-core');
+  if (found && existsSync(fileIn(found))) return { found: true, path: fileIn(found), reason: null };
+  return { found: false, path: null, reason: 'axe-core is not in the repository dependencies; add it there, or set browser.axeModule' };
+}
+
 export function loadPlaywright(found) {
   if (!found.found) throw new Error(found.reason);
   return createRequire(import.meta.url)(found.path);

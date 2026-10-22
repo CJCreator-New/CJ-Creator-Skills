@@ -67,9 +67,9 @@ test('a frozen but unapproved plan is blocked, and says the plan is not approved
 test('an approved plan with no runs is partially tested, and every P0 journey says what is missing', () => {
   const result = status(approved());
   assert.equal(result.status, 'PARTIALLY TESTED');
-  // Four P0 journeys are unverified, and six in-scope test cases outside them have not run (G19). The
+  // Four P0 journeys are unverified, and nine in-scope test cases outside them have not run (G19). The
   // two native test cases are out of scope, so they are listed apart and do not count.
-  assert.equal(result.reasons.length, 10);
+  assert.equal(result.reasons.length, 13);
   assert.deepEqual(result.outOfScope.map((o) => o.id), ['TC-AND-01', 'TC-IOS-01']);
   assert.match(result.outOfScope[0].reason, /out of scope for this release/);
   assert.ok(result.reasons.some((r) => r.startsWith('P0 journey J-03 is not verified: TC-APR-01 not run')));
@@ -81,7 +81,7 @@ test('the gate passes only when every test case of every P0 journey has a curren
   for (const id of all.slice(0, -1)) run(ledger, id, 'passed');
   assert.equal(status(ledger).status, 'PARTIALLY TESTED');
   run(ledger, all[all.length - 1], 'passed');
-  assert.ok(status(ledger).reasons.every((r) => /^TC-(SEC-\d+|UI-0[1-5]|AND-\d+|IOS-\d+) /.test(r)), JSON.stringify(status(ledger).reasons));
+  assert.ok(status(ledger).reasons.every((r) => /^TC-(SEC-\d+|UI-0[1-5]|UI-10|AND-\d+|IOS-\d+) /.test(r)), JSON.stringify(status(ledger).reasons));
   for (const tc of ledger.testCases) if (!all.includes(tc.id) && tc.outOfScope === undefined) run(ledger, tc.id, 'passed');
   const result = status(ledger);
   assert.deepEqual([result.status, result.reasons], ['PASS', []]);
@@ -243,4 +243,19 @@ test('a copy of the ledger is independent of the original', () => {
   const copy = clone(ledger);
   run(copy, 'TC-AUTH-02', 'passed');
   assert.equal(ledger.runs.length, 0);
+});
+
+test('a previous release is recorded apart from the build under test, one of each per target', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-ledger-'));
+  try {
+    const ledger = allowedLedger({ android: { status: 'ready' } });
+    ledger.intake.targets.android = { packageName: 'com.example.orders' };
+    for (const name of ['orders-2.0.apk', 'orders-1.9.apk', 'orders-2.0.1.apk']) writeFileSync(join(dir, name), name);
+    await recordBinary(ledger, { target: 'android', file: join(dir, 'orders-2.0.apk'), versionName: '2.0', buildNumber: '20', now: NOW });
+    await recordBinary(ledger, { target: 'android', file: join(dir, 'orders-1.9.apk'), versionName: '1.9', buildNumber: '19', previous: true, now: NOW });
+    await recordBinary(ledger, { target: 'android', file: join(dir, 'orders-2.0.1.apk'), versionName: '2.0.1', buildNumber: '21', now: NOW });
+    assert.deepEqual(ledger.binaries.map((b) => [b.role, b.versionName]).sort(), [['current', '2.0.1'], ['previous', '1.9']]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

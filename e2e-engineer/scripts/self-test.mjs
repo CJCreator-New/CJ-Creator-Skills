@@ -79,7 +79,8 @@ export async function scenario({ planted, android = 'clean-android-config', extr
       allowlist: { hosts: ['127.0.0.1'], dbNamePattern: '^(test|qa)_' },
       db: { engine: 'sqlite', name: 'test_orders', file: 'orders.sqlite', schema: join(FIXTURE, 'schema.sql'), seed: join(FIXTURE, 'seed.json') },
       allowReset,
-      authorization: null,
+      // The self-test authorizes probes against its own fixture server, which it started for this run.
+      authorization: { scope: 'the planted-app fixture server started by this self-test', authorizedBy: 'e2e-engineer self-test', date: now.slice(0, 10) },
       viewports: { desktop: { width: 1280, height: 800 }, phone: { width: 390, height: 844 }, narrow: { width: 320, height: 640 } },
       ...(playwrightModule ? { browser: { playwrightModule } } : {}),
     };
@@ -88,6 +89,7 @@ export async function scenario({ planted, android = 'clean-android-config', extr
     await new Promise((done) => server.listen(0, '127.0.0.1', done));
     const base = `http://127.0.0.1:${server.address().port}`;
     config.targets = { web: { baseUrl: base }, 'mobile-web': { baseUrl: base } };
+    config.healthUrl = `${base}/health`;
     const configPath = join(dir, 'qa.config.json');
     writeFileSync(configPath, JSON.stringify(config, null, 2));
 

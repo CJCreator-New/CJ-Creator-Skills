@@ -18,7 +18,7 @@ Every move is kept in the defect's `history`. `ledger.mjs defects <ledger>` list
 
 ## Triage
 
-The `triage` agent proposes; the orchestrator records. Severity has a floor the ledger enforces: a defect on a P0 journey, or on an access-control case, is at least High. Critical is a judgement, so a Critical defect needs an independent second review, by someone other than the triager, before it can be handed off:
+The `triage` agent proposes; the orchestrator records. Severity has a floor the ledger enforces: a defect on a requirement the plan tags with a `risk` (`tenant-isolation`, `auth-bypass`, `data-exposure`, `data-loss`, `payment`) is Critical; a defect on a P0 journey, or on an access-control case, is at least High. A Critical defect needs an independent second review, by someone other than the triager, before it can be handed off:
 
 `ledger.mjs review <ledger> DEF-001 --by <reviewer> --verdict confirmed`, or `--verdict changed --severity High`.
 

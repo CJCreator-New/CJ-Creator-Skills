@@ -111,9 +111,62 @@ test('a runner that is not read-only may write under the state folder', () => {
   }
 });
 
-test('a read or a shell command is not checked by this guard', () => {
+test('a read is not checked, and a shell command is checked only while a run is active', () => {
   assert.equal(decide({ tool_name: 'Read', tool_input: { file_path: '/etc/passwd' } }).allow, true);
-  assert.equal(decide({ tool_name: 'Bash', tool_input: { command: 'rm -rf src' } }).allow, true);
+  const dir = project({ active: false });
+  try {
+    assert.equal(decide({ tool_name: 'Bash', tool_input: { command: 'rm -rf src' }, cwd: dir }).allow, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('while a run is active, a shell command that writes outside the state folder is denied, with the reason', () => {
+  const dir = project({ active: true });
+  const bash = (command, agent_type) => decide({ tool_name: 'Bash', tool_input: { command }, cwd: dir, ...(agent_type ? { agent_type } : {}) });
+  try {
+    for (const [command, reason] of [
+      ['echo x > src/app.js', /redirects output to src\/app\.js/],
+      ['cat a | tee -a README.md', /tee writes README\.md/],
+      ["sed -i 's/a/b/' server.mjs", /sed edits server\.mjs in place/],
+      ['rm -rf src', /rm changes src/],
+      ['node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs" status x && mv a.js b.js', /mv changes a\.js/],
+      ['cp .claude/e2e-engineer/x.json public/x.json', /cp changes public\/x\.json/],
+      ['git commit -am wip', /changes the git repository/],
+      ['npm install axe-core', /installs packages/],
+      ['dd if=/dev/zero of=data.db bs=1 count=1', /dd changes data\.db/],
+    ]) {
+      const verdict = bash(command);
+      assert.equal(verdict.allow, false, command);
+      assert.match(verdict.reason, reason);
+    }
+    for (const command of [
+      'node "${CLAUDE_PLUGIN_ROOT}/scripts/run-api.mjs" .claude/e2e-engineer/ledger.json qa.config.json --root .',
+      'node "${CLAUDE_PLUGIN_ROOT}/scripts/artifacts.mjs" .claude/e2e-engineer/ledger.json .claude/e2e-engineer/report > .claude/e2e-engineer/report.log 2>&1',
+      'mkdir -p .claude/e2e-engineer/drafts',
+      'cp src/app.js /tmp/copy.js',
+      'git status && git diff',
+      'grep -rn approve src > /dev/null',
+      'ls -la src',
+    ]) {
+      assert.equal(bash(command).allow, true, command);
+    }
+    assert.equal(bash('echo x > .claude/e2e-engineer/ledger.json').allow, false, 'the ledger is not written by a redirection either');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an analyst may not write with the shell, even when no run is active', () => {
+  const dir = project({ active: false });
+  try {
+    const verdict = decide({ tool_name: 'Bash', tool_input: { command: 'ls > files.txt' }, cwd: dir, agent_type: 'e2e-engineer:ux-analyst' });
+    assert.equal(verdict.allow, false);
+    assert.match(verdict.reason, /ux-analyst is read-only, and this command writes/);
+    assert.equal(decide({ tool_name: 'Bash', tool_input: { command: 'ls design' }, cwd: dir, agent_type: 'e2e-engineer:ux-analyst' }).allow, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('run as a hook, a denied write exits with status 2 and the reason on stderr', () => {

@@ -39,3 +39,19 @@ test('a file that is not a native binary, or a directory, is refused', async () 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a simulator .app bundle is hashed over its files, so a change to any file changes the hash', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-app-'));
+  try {
+    const app = join(dir, 'Orders.app');
+    mkdirSync(join(app, 'Frameworks'), { recursive: true });
+    writeFileSync(join(app, 'Orders'), 'binary');
+    writeFileSync(join(app, 'Frameworks', 'lib.dylib'), 'lib');
+    const first = await describeBinary(app);
+    assert.equal(first.bytes, 9);
+    writeFileSync(join(app, 'Frameworks', 'lib.dylib'), 'lib2');
+    assert.notEqual((await describeBinary(app)).sha256, first.sha256);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

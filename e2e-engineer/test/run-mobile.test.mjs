@@ -136,7 +136,13 @@ describe('the native cases', () => {
       const exec = fakeExec();
       const summary = await run(env, { probes: DEVICE, exec });
       assert.ok(!summary.blocked.some((b) => b.id === 'TC-AND-01'), 'TC-AND-01 is not blocked');
-      assert.deepEqual(exec.calls.map((c) => c.command), ['adb', 'maestro']);
+      assert.deepEqual(exec.calls.map((c) => [c.command, c.args[2] ?? c.args[0]].join(' ')), [
+        'adb install',
+        'maestro test',
+        'adb shell',
+        'adb pull',
+        'adb logcat',
+      ], 'install, the flow, then the device evidence');
       const run01 = readLedger(env.ledgerPath).runs.find((r) => r.testCase === 'TC-AND-01');
       assert.equal(run01.result, 'passed');
     } finally {

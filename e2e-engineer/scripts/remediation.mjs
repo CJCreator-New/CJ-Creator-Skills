@@ -40,9 +40,15 @@ function currentBuild(ledger) {
   return ledger.intake?.build?.treeHash ?? null;
 }
 
-// The lowest severity the plan allows for a defect, with the reason. A defect on a P0 journey, or on
-// an access-control case, is at least High. Critical is a judgement, so it needs a second review.
+// The lowest severity the plan allows for a defect, with the reason. A defect on a requirement the plan
+// marks with a Critical risk (another tenant's data, an authentication bypass, exposed data, lost data,
+// money) is Critical. A defect on a P0 journey, or on an access-control case, is at least High.
+// Critical always needs a second review.
 export function severityFloor(ledger, defect) {
+  for (const reqId of defect.requirements || []) {
+    const risk = (ledger.requirements || []).find((r) => r.id === reqId)?.risk || [];
+    if (risk.length > 0) return { severity: 'Critical', reason: `${reqId} carries the risk ${risk.join(', ')}` };
+  }
   const journeys = new Map((ledger.journeys || []).map((j) => [j.id, j]));
   for (const tcId of defect.testCases || []) {
     const tc = ledger.testCases.find((t) => t.id === tcId);

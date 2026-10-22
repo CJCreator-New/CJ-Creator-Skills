@@ -25,10 +25,13 @@ export const ACTS = [
   'scanA11y',
   'expectResponse',
   'check',
+  'expectKeyboardReach',
+  'expectMatchesDesign',
 ];
 
 export const ROLES = ['button', 'link', 'textbox', 'table', 'heading', 'status', 'alert'];
-export const A11Y_RULES = ['input-label', 'button-name'];
+// The built-in rules, and `axe` for the full axe-core scan when the repository provides axe-core.
+export const A11Y_RULES = ['input-label', 'button-name', 'axe'];
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 function need(step, fields, at, problems) {
@@ -55,6 +58,17 @@ export function validateStep(step, at, layer = 'web') {
         break;
       }
       for (const problem of validateChecks({ id: at, checks: [step.check] })) problems.push(problem.replace(`${at} check 1`, at));
+      break;
+    case 'expectKeyboardReach':
+      need(step, ['role', 'name'], at, problems);
+      if (step.role && !ROLES.includes(step.role)) problems.push(`${at}: role must be one of ${ROLES.join(', ')}`);
+      if (step.maxTabs !== undefined && (!Number.isInteger(step.maxTabs) || step.maxTabs < 1)) problems.push(`${at}: maxTabs must be a positive integer`);
+      break;
+    case 'expectMatchesDesign':
+      need(step, ['image'], at, problems);
+      if (step.maxDiffRatio !== undefined && !(typeof step.maxDiffRatio === 'number' && step.maxDiffRatio >= 0 && step.maxDiffRatio <= 1)) {
+        problems.push(`${at}: maxDiffRatio must be between 0 and 1`);
+      }
       break;
     case 'expectResponse':
       need(step, ['role', 'name', 'method', 'path', 'status'], at, problems);

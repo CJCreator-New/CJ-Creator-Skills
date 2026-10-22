@@ -34,11 +34,12 @@ const fail = (ledger, id, message = 'status was 200, expected 404') =>
   recordResults(ledger, [{ id, result: 'failed', failures: [{ check: 'check 1 (http)', message }], reasons: [], evidence: [] }], { now: NOW });
 const pass = (ledger, ids) => recordResults(ledger, ids.map((id) => ({ id, result: 'passed', failures: [], reasons: [], evidence: [] })), { now: NOW });
 
-// A ledger with DEF-001 on TC-ORD-03 (the cross-tenant read), triaged and handed off.
+// A ledger with DEF-001 on TC-ORD-03 (the cross-tenant read), triaged Critical, reviewed and handed off.
 function handedOff() {
   const ledger = approved();
   fail(ledger, 'TC-ORD-03');
-  triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'GET /api/orders/:id does not check the tenant', by: 'triage', now: NOW });
+  triageDefect(ledger, 'DEF-001', { severity: 'Critical', owner: 'backend-engineer', rootCause: 'GET /api/orders/:id does not check the tenant', by: 'triage', now: NOW });
+  reviewDefect(ledger, 'DEF-001', { by: 'reviewer', verdict: 'confirmed', now: NOW });
   handOff(ledger, 'DEF-001', { now: NOW });
   return ledger;
 }
@@ -46,11 +47,21 @@ function handedOff() {
 describe('triage', () => {
   test('a defect on a P0 journey is at least High, and triage cannot set it lower', () => {
     const ledger = approved();
-    fail(ledger, 'TC-ORD-03');
-    assert.deepEqual(severityFloor(ledger, ledger.defects[0]), { severity: 'High', reason: 'TC-ORD-03 is on P0 journey J-04' });
+    fail(ledger, 'TC-APR-04', 'staff approved an order');
+    assert.deepEqual(severityFloor(ledger, ledger.defects[0]), { severity: 'High', reason: 'TC-APR-04 is on P0 journey J-03' });
     assert.throws(
       () => triageDefect(ledger, 'DEF-001', { severity: 'Medium', owner: 'backend-engineer', rootCause: 'x', by: 'triage', now: NOW }),
-      /DEF-001 cannot be Medium: TC-ORD-03 is on P0 journey J-04, so it is at least High/,
+      /DEF-001 cannot be Medium: TC-APR-04 is on P0 journey J-03, so it is at least High/,
+    );
+  });
+
+  test('a defect on a requirement with a Critical risk is Critical, whatever its journey', () => {
+    const ledger = approved();
+    fail(ledger, 'TC-ORD-03');
+    assert.deepEqual(severityFloor(ledger, ledger.defects[0]), { severity: 'Critical', reason: 'REQ-ORD-003 carries the risk tenant-isolation' });
+    assert.throws(
+      () => triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'x', by: 'triage', now: NOW }),
+      /cannot be High: REQ-ORD-003 carries the risk tenant-isolation, so it is at least Critical/,
     );
   });
 
@@ -77,7 +88,7 @@ describe('triage', () => {
     triageDefect(ledger, 'DEF-001', { severity: 'Critical', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
     assert.throws(() => handOff(ledger, 'DEF-001', { now: NOW }), /second review is pending/);
     assert.throws(() => reviewDefect(ledger, 'DEF-001', { by: 'triage', verdict: 'confirmed', now: NOW }), /needs a different reviewer/);
-    assert.throws(() => reviewDefect(ledger, 'DEF-001', { by: 'reviewer', verdict: 'changed', severity: 'Medium', now: NOW }), /at least High/);
+    assert.throws(() => reviewDefect(ledger, 'DEF-001', { by: 'reviewer', verdict: 'changed', severity: 'High', now: NOW }), /at least Critical/);
     reviewDefect(ledger, 'DEF-001', { by: 'reviewer', verdict: 'confirmed', now: NOW });
     assert.equal(handOff(ledger, 'DEF-001', { now: NOW }).severity, 'Critical');
   });
@@ -190,7 +201,7 @@ describe('retest and regression', () => {
     assert.deepEqual(defect.regression.knownFailures, ['TC-APR-04']);
     assert.deepEqual(
       defect.history.map((h) => h.status),
-      ['Confirmed', 'Triaged', 'Handed Off', 'Fix Claimed', 'Retest Passed', 'Regression Passed', 'Closed'],
+      ['Confirmed', 'Triaged', 'Triaged', 'Handed Off', 'Fix Claimed', 'Retest Passed', 'Regression Passed', 'Closed'],
     );
   });
 
@@ -269,12 +280,12 @@ describe('accepted risks', () => {
   test('an accepted High defect no longer gives FAIL, but an unaccepted one does', async () => {
     const { acceptRisk } = await import('../scripts/remediation.mjs');
     const ledger = approved();
-    fail(ledger, 'TC-ORD-03');
     fail(ledger, 'TC-APR-04', 'staff approved an order');
-    triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
-    acceptRisk(ledger, 'DEF-001', { by: 'release-owner', reason: 'tenant two is not live yet', now: NOW });
+    fail(ledger, 'TC-ORD-03');
+    triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'no role check on approve', by: 'triage', now: NOW });
+    acceptRisk(ledger, 'DEF-001', { by: 'release-owner', reason: 'staff accounts are not issued yet', now: NOW });
     const result = status(ledger);
     assert.equal(result.status, 'FAIL');
-    assert.deepEqual(result.reasons, ['TC-APR-04 failed']);
+    assert.deepEqual(result.reasons, ['TC-ORD-03 failed']);
   });
 });

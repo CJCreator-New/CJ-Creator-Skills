@@ -45,9 +45,9 @@ describe('the planted-app plan', () => {
   });
 
   test('reports coverage as separate measures, with P0 journeys counted on their own', () => {
-    assert.deepEqual(result.coverage.requirements, { total: 15, withTestCases: 15 });
-    assert.deepEqual(result.coverage.journeys, { total: 9, p0Total: 4, p0WithTestCases: 4, withTestCases: 9 });
-    assert.deepEqual(result.coverage.testCases, { total: 23, planned: 0, implemented: 23, executed: 0, outOfScope: 2 });
+    assert.deepEqual(result.coverage.requirements, { total: 17, withTestCases: 17 });
+    assert.deepEqual(result.coverage.journeys, { total: 10, p0Total: 4, p0WithTestCases: 4, withTestCases: 10 });
+    assert.deepEqual(result.coverage.testCases, { total: 26, planned: 0, implemented: 26, executed: 0, outOfScope: 2 });
   });
 });
 
@@ -242,7 +242,7 @@ describe('executable checks', () => {
   test('the fixture plan implements its api, db and web test cases, and leaves the static one planned', () => {
     const plan = fixtureLedger();
     const implemented = plan.testCases.filter((t) => t.automation === 'implemented').map((t) => t.id);
-    assert.equal(implemented.length, 23);
+    assert.equal(implemented.length, 26);
     assert.ok(implemented.includes('TC-E2E-01'));
     assert.ok(implemented.includes('TC-UI-09'));
     assert.ok(implemented.includes('TC-SEC-01'));

@@ -6,16 +6,18 @@
 //
 // node scripts/run-web.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2] [--web <url>] [--mobile <url>]
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Blocked, Infrastructure, classify, resolveValue, runCheck } from './checks.mjs';
 import { createContext } from './run-api.mjs';
 import { readLedger, recordResults, writeLedger } from './ledger.mjs';
 import { selectTestCases } from './results.mjs';
+import { createStopper, healthStop } from './stops.mjs';
+import { pruneEvidence } from './evidence.mjs';
 import { planDigest } from './plan.mjs';
 import { resetDatabase, validateTarget } from './env.mjs';
-import { findPlaywright, loadPlaywright } from './browser.mjs';
+import { findAxe, findPlaywright, loadPlaywright } from './browser.mjs';
 import { validateSteps } from './web-steps.mjs';
 import { redactBody, redactHeaders, redactString, redactValue } from './redact.mjs';
 
@@ -99,6 +101,77 @@ function describeStep(step) {
 
 async function waitForHash(page, fragment) {
   await page.waitForFunction((s) => window.location.hash.includes(s), fragment, { timeout: STEP_TIMEOUT_MS });
+}
+
+// The full axe-core scan, with the WCAG A and AA tags unless the step names others. A violation of a
+// rule the step lists in `allow` is not reported. axe-core comes from the repository or the config.
+async function axeViolations(page, step, ctx) {
+  const found = findAxe({ root: ctx.root, config: ctx.config });
+  if (!found.found) throw new Blocked(found.reason);
+  await page.addScriptTag({ content: readFileSync(found.path, 'utf8') });
+  const tags = step.axeTags ?? ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+  const results = await page.evaluate((runOnly) => window.axe.run(document, { runOnly: { type: 'tag', values: runOnly } }), tags);
+  return results.violations
+    .filter((v) => !(step.allow || []).includes(v.id))
+    .map((v) => `axe ${v.id} (${v.impact}): ${v.help}, ${v.nodes.length} element(s)`);
+}
+
+// Compares a screenshot of the page with a reference image, pixel by pixel, in a blank page so the
+// browser decodes both. A pixel differs when any channel differs by more than 16. Images of different
+// sizes do not match. The diff image goes to the evidence folder.
+async function compareWithDesign(page, step, ctx) {
+  const reference = resolve(ctx.root, step.image);
+  if (!existsSync(reference)) throw new Blocked(`the design reference ${step.image} does not exist; export it, or read it through the Figma connector`);
+  const shot = await page.screenshot({ fullPage: step.fullPage === true });
+  const scratch = await page.context().newPage();
+  try {
+    const result = await scratch.evaluate(
+      async ([a, b]) => {
+        const load = (src) => new Promise((done, fail) => {
+          const img = new Image();
+          img.onload = () => done(img);
+          img.onerror = () => fail(new Error('the image could not be decoded'));
+          img.src = src;
+        });
+        const [x, y] = await Promise.all([load(a), load(b)]);
+        if (x.width !== y.width || x.height !== y.height) {
+          return { ratio: 1, detail: `the page is ${x.width} by ${x.height} pixels and the reference is ${y.width} by ${y.height}`, diff: null };
+        }
+        const pixels = (img) => {
+          const c = document.createElement('canvas');
+          c.width = img.width;
+          c.height = img.height;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0);
+          return g.getImageData(0, 0, c.width, c.height);
+        };
+        const p = pixels(x);
+        const q = pixels(y);
+        const out = new ImageData(p.width, p.height);
+        let differing = 0;
+        for (let i = 0; i < p.data.length; i += 4) {
+          const differs = [0, 1, 2, 3].some((k) => Math.abs(p.data[i + k] - q.data[i + k]) > 16);
+          if (differs) differing += 1;
+          out.data.set(differs ? [255, 0, 0, 255] : [p.data[i], p.data[i + 1], p.data[i + 2], 60], i);
+        }
+        const c = document.createElement('canvas');
+        c.width = p.width;
+        c.height = p.height;
+        c.getContext('2d').putImageData(out, 0, 0);
+        return { ratio: differing / (p.width * p.height), detail: `${differing} differing pixels`, diff: c.toDataURL('image/png') };
+      },
+      [`data:image/png;base64,${shot.toString('base64')}`, `data:image/png;base64,${readFileSync(reference).toString('base64')}`],
+    );
+    if (result.diff && ctx.evidence) {
+      mkdirSync(ctx.evidence.dir, { recursive: true });
+      const name = `${ctx.evidence.stem}-design-diff.png`;
+      writeFileSync(join(ctx.evidence.dir, name), Buffer.from(result.diff.split(',')[1], 'base64'));
+      ctx.evidence.files.push(join(ctx.evidence.rel, name));
+    }
+    return result;
+  } finally {
+    await scratch.close();
+  }
 }
 
 // Runs one step in the page. Each act is a user action or a check, found by its role, name or label.
@@ -195,8 +268,27 @@ export async function runStep(step, { page, base, ctx }) {
       return;
     }
     case 'scanA11y': {
-      const violations = await page.evaluate(a11yInPage, step.rules);
+      const violations = await page.evaluate(a11yInPage, step.rules.filter((rule) => rule !== 'axe'));
+      if (step.rules.includes('axe')) violations.push(...(await axeViolations(page, step, ctx)));
       if (violations.length > 0) throw new StepFailed(violations.join('; '));
+      return;
+    }
+    case 'expectKeyboardReach': {
+      const target = page.getByRole(step.role, { name: step.name, exact: true }).first();
+      await target.waitFor({ state: 'visible' });
+      await page.evaluate(() => document.activeElement?.blur?.());
+      const max = step.maxTabs ?? 30;
+      for (let i = 1; i <= max; i += 1) {
+        await page.keyboard.press('Tab');
+        if (await target.evaluate((el) => el === document.activeElement)) return;
+      }
+      throw new StepFailed(`${step.role} "${step.name}" was not reached with ${max} presses of Tab`);
+    }
+    case 'expectMatchesDesign': {
+      const result = await compareWithDesign(page, step, ctx);
+      if (result.ratio > (step.maxDiffRatio ?? 0.02)) {
+        throw new StepFailed(`${result.detail}; ${(result.ratio * 100).toFixed(2)}% of pixels differ from ${step.image}, over ${((step.maxDiffRatio ?? 0.02) * 100).toFixed(2)}%`);
+      }
       return;
     }
     default:
@@ -205,7 +297,16 @@ export async function runStep(step, { page, base, ctx }) {
 }
 
 // Runs one test case in its own browser context. Returns { result, failures, reasons, evidence }.
-export async function runWebTestCase({ testCase, browser, base, viewports, ctx, evidenceDir, evidenceRel }) {
+// The clock and time zone a test case runs under (G28): the test case's own, or the config's. A
+// fixed time freezes Date in the page; the time zone sets the browser's zone. Without either, the
+// page uses the machine's clock and zone, and the run records that as a limitation.
+export function pageEnvironment(testCase, config = {}) {
+  const timezone = testCase.timezone ?? config.timezones?.[0] ?? null;
+  const fixedTime = testCase.clock ?? config.clock?.fixedTime ?? null;
+  return { timezone, fixedTime };
+}
+
+export async function runWebTestCase({ testCase, browser, base, viewports, ctx, evidenceDir, evidenceRel, environment = {} }) {
   const problems = validateSteps(testCase);
   if (problems.length > 0) return { result: 'blocked', failures: [], reasons: problems, evidence: [] };
   const viewportName = testCase.viewport ?? 'desktop';
@@ -213,7 +314,11 @@ export async function runWebTestCase({ testCase, browser, base, viewports, ctx, 
   if (!viewport) return { result: 'blocked', failures: [], reasons: [`viewport ${viewportName} is not declared in the config`], evidence: [] };
 
   const log = { test: testCase.id, viewport: viewportName, requests: [], responses: [], console: [], steps: [] };
-  const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+  const context = await browser.newContext({
+    viewport: { width: viewport.width, height: viewport.height },
+    ...(environment.timezone ? { timezoneId: environment.timezone } : {}),
+  });
+  if (environment.fixedTime) await context.clock.setFixedTime(new Date(environment.fixedTime));
   const page = await context.newPage();
   page.setDefaultTimeout(STEP_TIMEOUT_MS);
   page.on('request', (request) => {
@@ -238,7 +343,8 @@ export async function runWebTestCase({ testCase, browser, base, viewports, ctx, 
     for (const [i, step] of testCase.steps.entries()) {
       const label = `step ${i + 1} (${step.act})`;
       try {
-        await runStep(step, { page, base, ctx });
+        const evidence = { dir: evidenceDir, rel: evidenceRel, stem: `${testCase.id}-${viewportName}`, files: outcome.evidence };
+        await runStep(step, { page, base, ctx: { ...ctx, evidence } });
         log.steps.push({ label, ok: true });
       } catch (error) {
         const message = error instanceof StepFailed ? error.message : /Timeout \d+ms exceeded/.test(error.message) ? describeStep(step) : firstLine(error.message);
@@ -280,7 +386,7 @@ export function runWeb(options) {
 
 // The browser suite for the given layers. The e2e layer also gets an API context, so its backend
 // check steps can sign in by role, send requests and read the database.
-export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, playwright = null, bases = {}, only = null, layers }) {
+export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, playwright = null, bases = {}, only = null, layers, health = undefined }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -302,6 +408,8 @@ export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, 
   const ctx = {
     env,
     secrets,
+    root,
+    config,
     account(roleId) {
       const role = roles.get(roleId);
       if (!role || !role.account) throw new Blocked(`role ${roleId} has no account in the plan`);
@@ -331,7 +439,10 @@ export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, 
   const requirementsById = new Map((ledger.requirements || []).map((r) => [r.id, r]));
   const testCases = selectTestCases(ledger, layers, only);
   const results = [];
-  for (const testCase of testCases) {
+  const runner = layers.includes('e2e') ? 'e2e' : 'web';
+  const held = await healthStop({ config, testCases, runner, ...(health ? { check: health } : {}) });
+  const stopper = createStopper({ config, ledger, root, runner });
+  for (const testCase of held ? [] : testCases) {
     const finish = (outcome) => ({
       id: testCase.id,
       layer: testCase.layer,
@@ -351,6 +462,11 @@ export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, 
       results.push(finish({ result: 'blocked', reasons: [launchReason] }));
       continue;
     }
+    const why = stopper.check(testCase);
+    if (why) {
+      results.push(finish(stopper.stoppedResult(testCase, why)));
+      continue;
+    }
     if (config.db && config.allowReset === true) {
       resetDatabase({ config, root, now: new Date().toISOString() });
     } else if (testCase.mutates && config.db) {
@@ -365,12 +481,17 @@ export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, 
       ctx,
       evidenceDir,
       evidenceRel,
+      environment: pageEnvironment(testCase, config),
     });
-    results.push(finish(outcome));
+    const result = finish(outcome);
+    stopper.note(result, { testCase });
+    results.push(result);
   }
   if (browser) await browser.close();
+  if (held) results.push(...held.results);
 
-  const recorded = recordResults(ledger, results, { now });
+  const recorded = recordResults(ledger, results, { now, stops: held ? held.stops : stopper.stops() });
+  const pruned = pruneEvidence({ root, ledger, config, now });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};
@@ -381,6 +502,8 @@ export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, 
     failed: results.filter((r) => r.result === 'failed').map((r) => ({ id: r.id, failures: r.failures })),
     blocked: results.filter((r) => r.result === 'blocked').map((r) => ({ id: r.id, reasons: r.reasons })),
     evidence: evidenceRel,
+    evidencePruned: pruned.map((p) => p.folder),
+    stops: recorded.stops,
     defects: ledger.defects.length,
     opened: recorded.opened,
     flaky: recorded.flaky,

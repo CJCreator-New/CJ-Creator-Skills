@@ -15,11 +15,14 @@
       "binarySha256": "<sha256 from the build handover, optional>",
       "flows": {
         "sign-in-and-list": "flows/sign-in-and-list.yaml"
-      }
+      },
+      "devices": [
+        "emulator-5554"
+      ]
     },
     "ios": {
       "bundleId": "com.example.orders",
-      "binary": "builds/Orders.ipa",
+      "binary": "builds/Orders.app",
       "versionName": "1.0.0",
       "buildNumber": "1",
       "flows": {
@@ -28,6 +31,10 @@
     }
   },
   "start": "node server.mjs",
+  "startEnv": {
+    "PORT": "4173"
+  },
+  "startTimeoutSeconds": 30,
   "healthUrl": "http://localhost:4173/health",
   "db": {
     "engine": "sqlite",
@@ -35,7 +42,8 @@
   },
   "allowlist": {
     "hosts": [
-      "localhost"
+      "localhost",
+      "sandbox.mail.example.test"
     ],
     "packageNames": [
       "com.example.orders"
@@ -71,5 +79,34 @@
   },
   "mobileProjects": {
     "android": "app/android"
+  },
+  "clock": {
+    "fixedTime": "2026-01-15T10:00:00Z"
+  },
+  "integrations": {
+    "payments": {
+      "mode": "double"
+    },
+    "email": {
+      "mode": "live",
+      "sandboxUrl": "https://sandbox.mail.example.test"
+    }
+  },
+  "stops": {
+    "infrastructureRate": 0.3,
+    "minSample": 3
+  },
+  "budget": {
+    "maxMinutes": 120,
+    "maxRuns": 500,
+    "maxTokens": 2000000
+  },
+  "evidence": {
+    "keepRuns": 10,
+    "maxMegabytes": 500
+  },
+  "browser": {
+    "playwrightModule": "node_modules/playwright",
+    "axeModule": "node_modules/axe-core"
   }
 }

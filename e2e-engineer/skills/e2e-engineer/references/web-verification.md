@@ -20,7 +20,9 @@ A step is one user action or one check. Each finds its control the way a user do
 | `interceptNext` | Makes the next request to this path fail | The next matching request gets this status |
 | `expectNotClipped` | Shows the element in full, not cut off by a container | No container that hides overflow cuts it off |
 | `expectMinTarget` | Gives a control at least this many CSS pixels in both directions | The control's size meets the minimum |
-| `scanA11y` | Runs the named built-in accessibility rules | No violation is found |
+| `scanA11y` | Runs the named accessibility rules: `input-label`, `button-name`, and `axe` for the full axe-core scan | No violation is found, apart from the axe rules listed in `allow` |
+| `expectKeyboardReach` | Presses Tab from the top of the page until the control with this role and name has focus | Focus reaches it within `maxTabs` presses (30 by default) |
+| `expectMatchesDesign` | Compares a screenshot of the page with the reference image at `image` | At most `maxDiffRatio` of the pixels differ (0.02 by default); a diff image goes to the evidence |
 | `expectResponse` | Clicks a control and waits for the request it sends to this method and path | The response has this status |
 | `check` | e2e test cases only: runs an http or db check from `backend-verification.md` | The check passes |
 
@@ -49,7 +51,7 @@ Playwright traces are not stored. A trace records the full network traffic, incl
 
 ## Accessibility
 
-The built-in rules are limited. `input-label` checks that each form field has an accessible name. `button-name` checks that each button has a name. These two rules are what the plan's oracles for labels and names need. A fuller scan, such as a complete accessibility engine, is a later addition with its own dependency.
+`input-label` checks that each form field has an accessible name. `button-name` checks that each button has a name. `axe` runs axe-core with the WCAG 2.0, 2.1 and 2.2 A and AA tags (or `axeTags`). axe-core comes from the repository's dependencies, or from `browser.axeModule`; the skill never installs it, and without it the `axe` rule is blocked with the reason. `expectKeyboardReach` checks that a control can be reached with the keyboard alone (WCAG 2.1.1). Judgement items, such as whether the focus order makes sense, go to the human list.
 
 ## What a result means
 
@@ -61,7 +63,11 @@ The built-in rules are limited. `input-label` checks that each form field has an
 
 - Chromium only. Firefox and WebKit are not run.
 - Test cases run one at a time. Parallel browser lanes need a database with per-worker tenants, which the fixture does not have.
-- A visual comparison against a design is not run here. It is the design-reference work of a later phase.
+- The design comparison is pixel by pixel, so the page and the reference must be the same size and rendered the same way. Fix the clock and the data, or dynamic content will differ. See `design-references.md`.
+
+## Clock and time zone
+
+A test case runs on the clock in its `clock` field, or `clock.fixedTime` in the config, and in its `timezone`, or the first of the config's `timezones` (G28). A fixed time freezes `Date` in the page. Without either, the page uses the machine's clock and zone, and date-dependent results can change from run to run. The API's server clock is the app's own; the skill cannot fix it.
 
 ## Cross-layer (e2e) test cases
 

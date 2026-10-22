@@ -67,6 +67,7 @@ export function checkTargets(config) {
   for (const name of ['web', 'mobile-web']) {
     if (targets[name]) webProblems(name, targets[name].baseUrl, hosts, problems);
   }
+  if (config.healthUrl !== undefined) webProblems('healthUrl', config.healthUrl, hosts, problems);
   if (targets.android) {
     const pkg = targets.android.packageName;
     if (!isText(pkg)) problems.push('android: packageName is required');
@@ -78,6 +79,23 @@ export function checkTargets(config) {
     if (!isText(id)) problems.push('ios: bundleId is required');
     else if (!(allow.bundleIds || []).includes(id)) problems.push(`ios: bundle "${id}" is not on the allowlist`);
     else if (productionLike(id)) problems.push(`ios: bundle "${id}" looks like production and is refused`);
+  }
+  return problems;
+}
+
+// Third-party integrations run against doubles unless the config says live (G25). A live integration
+// needs a sandbox URL on the allowlist, so a live run never reaches a production service.
+export function checkIntegrations(config) {
+  const problems = [];
+  for (const [name, integration] of Object.entries(config.integrations || {})) {
+    if (!['double', 'live'].includes(integration?.mode)) {
+      problems.push(`integration ${name}: mode must be double or live`);
+      continue;
+    }
+    if (integration.mode === 'live') {
+      if (!isText(integration.sandboxUrl)) problems.push(`integration ${name}: a live integration needs its sandboxUrl`);
+      else webProblems(`integration ${name}`, integration.sandboxUrl, config.allowlist?.hosts || [], problems);
+    }
   }
   return problems;
 }
@@ -127,6 +145,7 @@ export function validateRun(config) {
     return { allowed: false, problems, resetAllowed: false, securityProbes: securityProbeDecision({}) };
   }
   problems.push(...checkTargets(config));
+  problems.push(...checkIntegrations(config));
   const db = checkDatabase(config);
   problems.push(...db.problems);
   return {

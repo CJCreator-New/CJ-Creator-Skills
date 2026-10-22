@@ -13,10 +13,11 @@ import { Blocked, Infrastructure, classify } from './checks.mjs';
 import { readLedger, recordResults, writeLedger } from './ledger.mjs';
 import { planDigest } from './plan.mjs';
 import { selectTestCases } from './results.mjs';
+import { createStopper, healthStop } from './stops.mjs';
 import { createContext } from './run-api.mjs';
 import { judgeLoad, loadRefusal, runLoad, validateLoadChecks } from './load.mjs';
 
-export async function runPerf({ ledgerPath, configPath, root, base, env, now, only = null, fetchImpl = fetch }) {
+export async function runPerf({ ledgerPath, configPath, root, base, env, now, only = null, fetchImpl = fetch, health = undefined }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -32,8 +33,10 @@ export async function runPerf({ ledgerPath, configPath, root, base, env, now, on
   const requirementsById = new Map((ledger.requirements || []).map((r) => [r.id, r]));
   const testCases = selectTestCases(ledger, ['perf'], only);
   const results = [];
+  const held = await healthStop({ config, testCases, runner: 'perf', ...(health ? { check: health } : {}) });
+  const stopper = createStopper({ config, ledger, root, runner: 'perf' });
   // One perf test case at a time, so two loads never add up past the limits.
-  for (const testCase of testCases) {
+  for (const testCase of held ? [] : testCases) {
     const finish = (outcome) => ({
       id: testCase.id,
       result: classify(outcome.result, testCase, requirementsById),
@@ -41,6 +44,11 @@ export async function runPerf({ ledgerPath, configPath, root, base, env, now, on
       reasons: outcome.reasons || [],
       evidence: outcome.evidence || [],
     });
+    const why = stopper.check(testCase);
+    if (why) {
+      results.push(finish(stopper.stoppedResult(testCase, why)));
+      continue;
+    }
     const problems = validateLoadChecks(testCase);
     if (problems.length > 0) {
       results.push(finish({ result: 'blocked', reasons: problems }));
@@ -73,10 +81,13 @@ export async function runPerf({ ledgerPath, configPath, root, base, env, now, on
         break;
       }
     }
-    results.push(finish(outcome ?? { result: 'passed', evidence }));
+    const result = finish(outcome ?? { result: 'passed', evidence });
+    stopper.note(result, { testCase });
+    results.push(result);
   }
+  if (held) results.push(...held.results);
 
-  const recorded = recordResults(ledger, results, { now });
+  const recorded = recordResults(ledger, results, { now, stops: held ? held.stops : stopper.stops() });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};

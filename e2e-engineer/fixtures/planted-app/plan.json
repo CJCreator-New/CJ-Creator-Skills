@@ -70,7 +70,10 @@
       "id": "REQ-ORD-003",
       "text": "A user reads and approves only orders in its own tenant. Another tenant's order returns 404.",
       "oracle": "contract",
-      "source": "openapi.json GET /api/orders/{id}"
+      "source": "openapi.json GET /api/orders/{id}",
+      "risk": [
+        "tenant-isolation"
+      ]
     },
     {
       "id": "REQ-APR-001",
@@ -133,6 +136,18 @@
       "text": "A release build is not debuggable, allows no cleartext traffic, and declares no secret in its resources.",
       "oracle": "doc",
       "source": "OWASP MASVS MSTG-RESILIENCE and MSTG-STORAGE checks for Android"
+    },
+    {
+      "id": "REQ-SEC-002",
+      "text": "A tampered or missing session token is refused with 401, and input that carries injection markers is handled as data: the API answers 2xx or 4xx, never 5xx, and stores the text as it was sent.",
+      "oracle": "doc",
+      "source": "OWASP ASVS 4.0 V3.5 (token-based sessions) and V5.3 (output encoding and injection prevention)"
+    },
+    {
+      "id": "REQ-UI-006",
+      "text": "Every control can be reached with the keyboard alone.",
+      "oracle": "doc",
+      "source": "WCAG 2.2 SC 2.1.1 Keyboard, level A"
     }
   ],
   "permissions": [
@@ -590,7 +605,8 @@
         "SCR-ORDERS"
       ],
       "requirements": [
-        "REQ-UI-003"
+        "REQ-UI-003",
+        "REQ-UI-006"
       ],
       "branches": [
         {
@@ -622,6 +638,33 @@
         {
           "kind": "failure",
           "summary": "a debuggable manifest or a hardcoded key is reported"
+        }
+      ]
+    },
+    {
+      "id": "J-10",
+      "title": "The API resists tampered sessions and injected input",
+      "priority": "P1",
+      "roles": [
+        "staff",
+        "manager"
+      ],
+      "screens": [],
+      "requirements": [
+        "REQ-SEC-002"
+      ],
+      "operations": [
+        "OP-LIST",
+        "OP-CREATE"
+      ],
+      "branches": [
+        {
+          "kind": "success",
+          "summary": "a tampered or missing token is refused, and markers in an order item are stored as text"
+        },
+        {
+          "kind": "failure",
+          "summary": "a probe gets a 5xx, or a tampered token is accepted"
         }
       ]
     }
@@ -1935,6 +1978,155 @@
           "act": "expectTestId",
           "testId": "status",
           "text": "approved"
+        }
+      ]
+    },
+    {
+      "id": "TC-SEC-02",
+      "title": "A tampered or missing session is refused",
+      "layer": "api",
+      "mutates": false,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-SEC-002"
+      ],
+      "journeys": [
+        "J-10"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-LIST"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "GET /api/orders with a tampered manager token returns 401",
+        "GET /api/orders with no token returns 401"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "probe",
+          "probe": "session-tamper",
+          "as": "manager",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders"
+          },
+          "expect": {
+            "status": 401
+          }
+        },
+        {
+          "kind": "probe",
+          "probe": "no-session",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders"
+          },
+          "expect": {
+            "status": 401
+          }
+        }
+      ]
+    },
+    {
+      "id": "TC-SEC-03",
+      "title": "Injection markers in an order item are stored as text",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-SEC-002"
+      ],
+      "journeys": [
+        "J-10"
+      ],
+      "roles": [
+        "staff"
+      ],
+      "operations": [
+        "OP-CREATE"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS",
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "each marker in item gives 201 or 422, never 5xx",
+        "the script marker is stored exactly as it was sent"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "probe",
+          "probe": "injection",
+          "as": "staff",
+          "field": "item",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders",
+            "body": {
+              "item": "x",
+              "total": 10
+            }
+          },
+          "expect": {
+            "statuses": [
+              201,
+              422
+            ]
+          }
+        },
+        {
+          "kind": "db",
+          "query": "SELECT COUNT(*) AS n FROM orders WHERE item = '<script>e2e-probe</script>'",
+          "expectRows": [
+            {
+              "n": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TC-UI-10",
+      "title": "The approve control is reachable with the keyboard",
+      "layer": "web",
+      "mutates": false,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-UI-006"
+      ],
+      "journeys": [
+        "J-08"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "controls": [
+        "SCR-ORDER-DETAIL.approve"
+      ],
+      "expected": [
+        "Tab reaches the Approve button on an order page"
+      ],
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-1"
+        },
+        {
+          "act": "expectKeyboardReach",
+          "role": "button",
+          "name": "Approve"
         }
       ]
     }

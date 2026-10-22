@@ -35,7 +35,7 @@ test('freezing records the digest, the time, and the coverage at that time', () 
   const frozen = freezePlan(ledger, { now: NOW });
   assert.equal(frozen.hash, planDigest(ledger));
   assert.equal(frozen.frozenAt, NOW);
-  assert.equal(frozen.coverage.requirements.total, 15);
+  assert.equal(frozen.coverage.requirements.total, 17);
   assert.equal(frozen.gaps, 3);
 });
 
@@ -74,8 +74,8 @@ test('loadPlan reads each section into its collection and rejects an unknown sec
   const ledger = fixtureLedger();
   const plain = { ...emptyLedger(), intake: ledger.intake };
   const counts = loadPlan(plain, readFixturePlan());
-  assert.equal(counts.testCases, 23);
-  assert.equal(counts.journeys, 9);
+  assert.equal(counts.testCases, 26);
+  assert.equal(counts.journeys, 10);
   assert.throws(() => loadPlan(plain, { mystery: [] }), /unknown plan section mystery/);
 });
 
@@ -86,8 +86,8 @@ test('canonical sorts keys at every depth, and keeps the order of arrays', () =>
 
 test('the fixture plan loads with every collection populated', () => {
   const ledger = fixtureLedger();
-  assert.equal(ledger.requirements.length, 15);
-  assert.equal(ledger.journeys.length, 9);
-  assert.equal(ledger.testCases.length, 23);
+  assert.equal(ledger.requirements.length, 17);
+  assert.equal(ledger.journeys.length, 10);
+  assert.equal(ledger.testCases.length, 26);
   assert.equal(clone(ledger.designMap).source, 'none');
 });

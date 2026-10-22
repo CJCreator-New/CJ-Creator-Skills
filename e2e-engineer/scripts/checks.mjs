@@ -7,12 +7,27 @@
 //   concurrent  the same request, sent `count` times at once; the statuses must equal expectStatuses,
 //               and an optional `then` http check runs after, for the invariant
 //   db          one read-only SELECT whose rows must equal expectRows
-//   probe       an http check that needs a recorded authorization; refused without one
+//   probe       an http check that needs a recorded authorization; refused without one. With a
+//               `probe` preset it runs a named, non-destructive attack instead (see PROBES)
 //
 // Credentials and other values are never written in a plan. "$env:NAME" is replaced at run time with
 // the environment variable NAME. A missing variable blocks the check.
 
 export const CHECK_KINDS = ['http', 'concurrent', 'db', 'probe'];
+
+// Security probe presets. Each is non-destructive, bounded, and runs only against the allowlisted
+// target, only with a recorded authorization (G13):
+//   session-tamper  the role's session token with characters appended; expect 401
+//   no-session      no session at all; expect 401
+//   injection       each marker payload in turn in `field` of the body; every answer is 2xx or 4xx,
+//                   never 5xx, and is one of expect.statuses when given
+//   rate-limit      up to `count` requests (at most the authorization's maxRequests, default 20); at
+//                   least one answer is 429
+//   cors            a request from a foreign Origin; the response must not allow that origin with
+//                   credentials, or allow every origin with credentials
+export const PROBES = ['session-tamper', 'no-session', 'injection', 'rate-limit', 'cors'];
+export const INJECTION_MARKERS = ["' OR '1'='1", '<script>e2e-probe</script>', '${7*7}{{7*7}}', '../../../../etc/passwd', '"; DROP TABLE e2e_probe; --'];
+const PROBE_ORIGIN = 'https://e2e-probe.invalid';
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const TYPES = ['number', 'string', 'boolean', 'array', 'object'];
 
@@ -57,6 +72,13 @@ export function validateChecks(testCase) {
       if (!Array.isArray(check.expectStatuses)) problems.push(`${at}: expectStatuses must be a list`);
       validateRequest(check.request, at, problems);
       if (check.then) validateHttp(check.then, `${at} then`, problems);
+    } else if (check.kind === 'probe' && check.probe !== undefined) {
+      if (!PROBES.includes(check.probe)) problems.push(`${at}: probe must be one of ${PROBES.join(', ')}`);
+      validateRequest(check.request, at, problems);
+      if (check.probe === 'session-tamper' && typeof check.as !== 'string') problems.push(`${at}: session-tamper needs as, the role whose session is tampered`);
+      if (check.probe === 'injection' && (typeof check.field !== 'string' || typeof check.request?.body !== 'object')) {
+        problems.push(`${at}: injection needs field, and a request body that has it`);
+      }
     } else {
       validateHttp(check, at, problems);
     }
@@ -141,8 +163,53 @@ async function runHttp(check, ctx, { probe = false } = {}) {
   return { ok: failures.length === 0, message: failures.join('; '), status: response.status, body: response.body };
 }
 
+// Runs one probe preset. Returns { ok, message }.
+async function runProbe(check, ctx) {
+  if (!ctx.probesAllowed) throw new Blocked('security probes are refused: no authorization is recorded for this run');
+  const { method, path } = check.request;
+  const base = { 'content-type': 'application/json' };
+  const body = (value) => (value === undefined ? undefined : JSON.stringify(resolveValue(value, ctx.env)));
+  const authed = async () => (check.as ? { ...base, authorization: `Bearer ${await ctx.sessionFor(check.as)}` } : base);
+  if (check.probe === 'session-tamper' || check.probe === 'no-session') {
+    const headers = check.probe === 'no-session' ? base : { ...base, authorization: `Bearer ${await ctx.sessionFor(check.as)}e2e-tampered` };
+    const want = check.expect?.status ?? 401;
+    const res = await ctx.request(method, path, { headers, body: body(check.request.body) });
+    return res.status === want ? { ok: true, message: '' } : { ok: false, message: `status was ${res.status} with a ${check.probe === 'no-session' ? 'missing' : 'tampered'} session, expected ${want}` };
+  }
+  if (check.probe === 'injection') {
+    const headers = await authed();
+    const failures = [];
+    for (const marker of INJECTION_MARKERS) {
+      const payload = { ...check.request.body, [check.field]: marker };
+      const res = await ctx.request(method, path, { headers, body: body(payload) });
+      if (res.status >= 500) failures.push(`marker ${JSON.stringify(marker)} in ${check.field} gave ${res.status}`);
+      else if (check.expect?.statuses && !check.expect.statuses.includes(res.status)) failures.push(`marker ${JSON.stringify(marker)} in ${check.field} gave ${res.status}, expected one of ${check.expect.statuses.join(', ')}`);
+    }
+    return { ok: failures.length === 0, message: failures.join('; ') };
+  }
+  if (check.probe === 'rate-limit') {
+    const headers = await authed();
+    const count = Math.min(check.count ?? 20, ctx.probeLimit ?? 20);
+    const want = check.expect?.status ?? 429;
+    for (let i = 0; i < count; i += 1) {
+      const res = await ctx.request(method, path, { headers, body: body(check.request.body) });
+      if (res.status === want) return { ok: true, message: '' };
+    }
+    return { ok: false, message: `no ${want} after ${count} requests to ${method} ${path}` };
+  }
+  const headers = { ...(await authed()), origin: PROBE_ORIGIN };
+  const res = await ctx.request(method, path, { headers, body: body(check.request.body) });
+  const allowOrigin = res.headers?.['access-control-allow-origin'];
+  const credentials = res.headers?.['access-control-allow-credentials'] === 'true';
+  if (credentials && (allowOrigin === PROBE_ORIGIN || allowOrigin === '*')) {
+    return { ok: false, message: `a request from ${PROBE_ORIGIN} is allowed with credentials (access-control-allow-origin: ${allowOrigin})` };
+  }
+  return { ok: true, message: '' };
+}
+
 // Runs one check of any kind. Returns { ok, message }. Throws Blocked when the check cannot run here.
 export async function runCheck(check, ctx) {
+  if (check.kind === 'probe' && check.probe !== undefined) return runProbe(check, ctx);
   if (check.kind === 'db') {
     const rows = await ctx.query(check.query);
     const failures = assertRows(rows, check.expectRows);
@@ -173,7 +240,7 @@ export async function runTestCase({ testCase, ctx }) {
   if (problems.length > 0) return { result: 'blocked', failures: [], reasons: problems, evidence: [] };
   const evidence = [];
   for (const [i, check] of testCase.checks.entries()) {
-    const label = `check ${i + 1} (${check.kind})`;
+    const label = `check ${i + 1} (${check.kind}${check.probe ? `:${check.probe}` : ''})`;
     let outcome;
     try {
       outcome = await runCheck(check, ctx);
@@ -191,7 +258,7 @@ export async function runTestCase({ testCase, ctx }) {
 // Runs the given test cases. Read-only cases run together, on a fresh database when reset is given.
 // Mutating cases run one at a time, each on a fresh database. Without reset they are blocked, since a
 // mutating case would change the state the next one reads.
-export async function runSuite({ testCases, ledger, ctx, reset }) {
+export async function runSuite({ testCases, ledger, ctx, reset, stopper = null }) {
   const requirementsById = new Map((ledger.requirements || []).map((r) => [r.id, r]));
   const finish = (testCase, outcome) => ({
     id: testCase.id,
@@ -205,17 +272,32 @@ export async function runSuite({ testCases, ledger, ctx, reset }) {
     evidence: outcome.evidence,
   });
 
+  const run = async (testCase) => {
+    const why = stopper?.check(testCase);
+    if (why) return finish(testCase, stopper.stoppedResult(testCase, why));
+    const result = finish(testCase, await runTestCase({ testCase, ctx }));
+    stopper?.note(result, { testCase });
+    return result;
+  };
+
   if (reset) await reset();
   const readOnly = testCases.filter((t) => !t.mutates);
   const mutating = testCases.filter((t) => t.mutates);
-  const results = await Promise.all(readOnly.map(async (t) => finish(t, await runTestCase({ testCase: t, ctx }))));
+  const results = await Promise.all(readOnly.map(run));
   for (const testCase of mutating) {
+    const why = stopper?.check(testCase);
+    if (why) {
+      results.push(finish(testCase, stopper.stoppedResult(testCase, why)));
+      continue;
+    }
     if (!reset) {
       results.push(finish(testCase, { result: 'blocked', failures: [], reasons: ['a fresh database is needed before a mutating test, and reset is not allowed'], evidence: [] }));
       continue;
     }
     await reset();
-    results.push(finish(testCase, await runTestCase({ testCase, ctx })));
+    const result = finish(testCase, await runTestCase({ testCase, ctx }));
+    stopper?.note(result, { testCase });
+    results.push(result);
   }
   return results.sort((a, b) => (a.id < b.id ? -1 : 1));
 }

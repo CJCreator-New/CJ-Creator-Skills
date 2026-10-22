@@ -14,6 +14,8 @@ export const LAYERS = ['web', 'mobile-web', 'e2e', 'android', 'ios', 'api', 'db'
 export const AUTOMATION = ['planned', 'implemented', 'executed'];
 export const BRANCH_KINDS = ['success', 'failure', 'permission', 'cancel', 'duplicate', 'recovery'];
 export const OUTCOMES = ['allowed', 'denied', 'conditional'];
+// Risks that make a failing requirement Critical: the severity floor of its defects.
+export const RISKS = ['tenant-isolation', 'auth-bypass', 'data-exposure', 'data-loss', 'payment'];
 
 function index(items, errors, label) {
   const byId = new Map();
@@ -67,6 +69,9 @@ export function validatePlan(ledger) {
     if (!nonEmptyText(req.text)) errors.push(`requirement ${req.id} needs text`);
     if (req.derived === true && req.confirmed !== true) {
       warnings.push(`requirement ${req.id} is derived and not confirmed, so it cannot drive a FAIL`);
+    }
+    for (const risk of req.risk || []) {
+      if (!RISKS.includes(risk)) errors.push(`requirement ${req.id} has an unknown risk ${risk}; use ${RISKS.join(', ')}`);
     }
     if (req.oracle === 'observed') {
       warnings.push(`requirement ${req.id} has the observed oracle, so it records behaviour that needs confirmation`);
@@ -133,6 +138,9 @@ export function validatePlan(ledger) {
     if (!LAYERS.includes(test.layer)) errors.push(`test case ${test.id} needs a layer: ${LAYERS.join(', ')}`);
     if (!AUTOMATION.includes(test.automation)) errors.push(`test case ${test.id} needs an automation status: ${AUTOMATION.join(', ')}`);
     if (typeof test.mutates !== 'boolean') errors.push(`test case ${test.id} must say whether it mutates data (mutates: true or false)`);
+    if (test.integrations !== undefined && (!Array.isArray(test.integrations) || test.integrations.some((n) => !nonEmptyText(n)))) {
+      errors.push(`test case ${test.id} integrations must be a list of integration names`);
+    }
     if (test.outOfScope !== undefined) {
       if (nonEmptyText(test.outOfScope)) warnings.push(`test case ${test.id} is out of scope: ${test.outOfScope}`);
       else errors.push(`test case ${test.id} is out of scope, so it needs the reason as text in outOfScope`);

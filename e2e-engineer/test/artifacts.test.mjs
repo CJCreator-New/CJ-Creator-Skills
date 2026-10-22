@@ -63,7 +63,7 @@ test('the requirement table shows a derived requirement as confirmed only once i
 
 test('the report keeps coverage as separate counts, with no combined percentage', () => {
   const report = renderArtifacts(fixtureLedger(), { now: NOW })[NAMES.report];
-  assert.match(report, /\| Requirements with test cases \| 15 of 15 \|/);
+  assert.match(report, /\| Requirements with test cases \| 17 of 17 \|/);
   assert.match(report, /\| P0 journeys with test cases \| 4 of 4 \|/);
   assert.match(report, /\| Controls mapped to test cases \| 8 of 11 \|/);
   assert.doesNotMatch(report, /\d+%/);
@@ -101,22 +101,23 @@ test('writeArtifacts writes every file under the output folder', () => {
 
 test('the register and the report show remediation, flaky and out-of-scope state from the ledger', async () => {
   const { recordResults } = await import('../scripts/ledger.mjs');
-  const { handOff, triageDefect } = await import('../scripts/remediation.mjs');
+  const { handOff, reviewDefect, triageDefect } = await import('../scripts/remediation.mjs');
   const ledger = fixtureLedger();
   freezePlan(ledger, { now: NOW });
   approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
   const result = (id, r) => ({ id, result: r, failures: r === 'failed' ? [{ check: 'check 1 (http)', message: 'status was 200' }] : [], reasons: [], evidence: [] });
   recordResults(ledger, [result('TC-ORD-03', 'failed'), result('TC-AUTH-02', 'passed')], { now: NOW });
   recordResults(ledger, [result('TC-AUTH-02', 'failed')], { now: NOW });
-  triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
+  triageDefect(ledger, 'DEF-001', { severity: 'Critical', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
+  reviewDefect(ledger, 'DEF-001', { by: 'reviewer', verdict: 'confirmed', now: NOW });
   handOff(ledger, 'DEF-001', { now: NOW });
   const files = renderArtifacts(ledger, { now: NOW });
-  assert.match(files[NAMES.defects], /\| DEF-001 \| .* \| High \| Handed Off \| backend-engineer \| TC-ORD-03 failed \|/);
+  assert.match(files[NAMES.defects], /\| DEF-001 \| .* \| Critical \| Handed Off \| backend-engineer \| TC-ORD-03 failed \|/);
   assert.match(files[NAMES.defects], /\| DEF-001 \| HO-DEF-001-1 \|/);
   assert.match(files[NAMES.report], /\| flaky \| 1 \|/);
   assert.match(files[NAMES.report], /- TC-AUTH-02 flaky/);
   assert.match(files[NAMES.report], /- TC-AND-01: native targets are out of scope/);
-  assert.match(files[NAMES.report], /\| High \| 1 \| 0 \|/);
+  assert.match(files[NAMES.report], /\| Critical \| 1 \| 0 \|/);
   assert.match(files[NAMES.catalog], /## Out of scope/);
   assert.ok(files[DATA_FILES.defects].includes('"HO-DEF-001-1"'));
 });

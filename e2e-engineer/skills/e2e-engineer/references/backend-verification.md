@@ -48,6 +48,20 @@ A race is tested by sending the requests at once and asserting the outcome: one 
 
 A probe is refused unless the run's configuration records an authorization: scope, who authorized it, and when. A refused probe is reported as refused, and the static checks still run. Probes use marker values that show whether input was stored or executed, and they never send a payload that is destructive.
 
+The authorization is recorded in the config, by the person who gives it: `"authorization": { "scope": "...", "authorizedBy": "<name>", "date": "<YYYY-MM-DD>", "maxRequests": 20 }`. The example config leaves it `null`, so probes are refused until someone records it.
+
+A probe check names a preset with `probe`. The expectation comes from the plan; each preset has a default.
+
+| Preset | Sends | Passes when |
+| --- | --- | --- |
+| `session-tamper` | the role's token with characters added (`as` names the role) | the status is `expect.status`, 401 by default |
+| `no-session` | no token | the status is `expect.status`, 401 by default |
+| `injection` | each marker in turn in the body `field`: SQL, script, template, path traversal | no answer is 5xx, and each is one of `expect.statuses` when given |
+| `rate-limit` | up to `count` requests, never more than `authorization.maxRequests` (20 by default) | one of them gets `expect.status`, 429 by default |
+| `cors` | a request from a foreign `Origin` | the response does not allow that origin, or every origin, with credentials |
+
+A failed probe stops the mutating test cases that follow it on that host (see the stop conditions in `SKILL.md`), and the finding is reported at once.
+
 ## What a result means
 
 - `passed`: every check in the test case held on the current build.

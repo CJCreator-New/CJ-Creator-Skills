@@ -37,6 +37,8 @@ async function environment(planted, { allowReset = true } = {}) {
   const config = clone(db.config);
   config.allowlist.hosts = ['127.0.0.1'];
   config.targets = { web: { baseUrl: base } };
+  // The fixture's own authorization, so the plan's security probes run against this test server.
+  config.authorization = { scope: 'planted-app test server', authorizedBy: 'e2e-engineer tests', date: '2026-10-22' };
   writeFileSync(configPath, JSON.stringify(config));
   const ledger = fixtureLedger();
   freezePlan(ledger, { now: NOW });
@@ -78,8 +80,8 @@ describe('the clean control', () => {
 
   test('every implemented api and db test case passes, and no defect is opened', async () => {
     const summary = await runWith(env);
-    assert.equal(summary.ran, 10);
-    assert.deepEqual(summary.results, { passed: 10 });
+    assert.equal(summary.ran, 12);
+    assert.deepEqual(summary.results, { passed: 12 });
     assert.equal(summary.defects, 0);
   });
 
@@ -107,7 +109,7 @@ describe('the planted defects', () => {
   test('the cheap tests still pass against the planted build, because those behaviours are correct there', () => {
     const ledger = readLedger(env.ledgerPath);
     const passed = ledger.runs.filter((r) => r.result === 'passed').map((r) => r.testCase).sort();
-    assert.deepEqual(passed, ['TC-APR-01', 'TC-AUTH-01', 'TC-AUTH-02', 'TC-DB-01']);
+    assert.deepEqual(passed, ['TC-APR-01', 'TC-AUTH-01', 'TC-AUTH-02', 'TC-DB-01', 'TC-SEC-02', 'TC-SEC-03']);
   });
 
   test('each failing test case opens one defect, with its first failure as the evidence', () => {

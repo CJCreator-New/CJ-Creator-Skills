@@ -20,9 +20,11 @@ describe('the step vocabulary', () => {
       { act: 'expectMinTarget', role: 'button', name: 'Approve', min: 44 },
       { act: 'scanA11y', rules: ['input-label', 'button-name'] },
       { act: 'expectResponse', role: 'button', name: 'Approve', method: 'POST', path: '/api/orders/o-1/approve', status: 200 },
+      { act: 'expectKeyboardReach', role: 'button', name: 'Approve' },
+      { act: 'expectMatchesDesign', image: 'design/orders-phone.png', maxDiffRatio: 0.05 },
     ];
     assert.deepEqual(good.map((s) => validateStep(s, 'x')), good.map(() => []));
-    assert.deepEqual(ACTS.length, 15);
+    assert.deepEqual(ACTS.length, 17);
   });
 
   test('a backend check step is allowed in an e2e test case only, and is checked like any check', () => {

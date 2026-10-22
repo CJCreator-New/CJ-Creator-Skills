@@ -101,7 +101,7 @@ test('without Playwright in the repository, every web test is blocked with the r
   const env = await environment(new Set(), { playwrightModule: null });
   try {
     const summary = await runWith(env);
-    assert.deepEqual(summary.results, { blocked: 8 });
+    assert.deepEqual(summary.results, { blocked: 9 });
     assert.ok(summary.blocked.every((b) => b.reasons.some((r) => /Playwright is not in the repository dependencies/.test(r))));
   } finally {
     await env.close();
@@ -119,7 +119,7 @@ describe('browser runs in Chromium', { skip: SKIP ?? false }, () => {
     after(() => env.close());
 
     test('every implemented web and mobile-web test passes, and no defect is opened', () => {
-      assert.deepEqual(summary.results, { passed: 8 });
+      assert.deepEqual(summary.results, { passed: 9 });
       assert.equal(summary.defects, 0);
     });
 
@@ -127,7 +127,7 @@ describe('browser runs in Chromium', { skip: SKIP ?? false }, () => {
       const files = evidenceFiles(env.root, summary.evidence).map((f) => f.name);
       assert.ok(files.includes('TC-UI-09-desktop.png'));
       assert.ok(files.includes('TC-UI-09-desktop.json'));
-      assert.equal(files.filter((f) => f.endsWith('.png')).length, 8);
+      assert.equal(files.filter((f) => f.endsWith('.png')).length, 9);
     });
 
     test('no password, bearer token, cookie or token value is stored anywhere in the evidence', () => {
@@ -194,7 +194,7 @@ describe('browser runs in Chromium', { skip: SKIP ?? false }, () => {
 
     test('the defects the passing tests show are not opened, and the cheap paths still pass', () => {
       const passed = ledger.runs.filter((r) => r.result === 'passed').map((r) => r.testCase).sort();
-      assert.deepEqual(passed, ['TC-UI-06', 'TC-UI-09']);
+      assert.deepEqual(passed, ['TC-UI-06', 'TC-UI-09', 'TC-UI-10']);
     });
 
     test('the failing web tests open one defect each, and TC-UI-08 is reported with its own step', () => {

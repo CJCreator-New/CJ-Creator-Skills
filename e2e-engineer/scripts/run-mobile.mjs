@@ -8,11 +8,13 @@
 // node scripts/run-mobile.mjs <ledger.json> <config.json> --root <repo> [--only TC-1,TC-2]
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Blocked, classify } from './checks.mjs';
 import { readLedger, recordResults, writeLedger } from './ledger.mjs';
 import { selectTestCases } from './results.mjs';
+import { createStopper } from './stops.mjs';
+import { pruneEvidence } from './evidence.mjs';
 import { planDigest } from './plan.mjs';
 import { resetDatabase, validateTarget } from './env.mjs';
 import { currentProbes, defaultExec, runNativeTestCase } from './native.mjs';
@@ -20,7 +22,7 @@ import { validateRun } from './safety.mjs';
 
 const LAYERS = ['static', 'android', 'ios'];
 
-export async function runMobile({ ledgerPath, configPath, root, env, now, exec = defaultExec, probes = null, only = null }) {
+export async function runMobile({ ledgerPath, configPath, root, env, now, exec = defaultExec, probes = null, reprobe = null, only = null }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -45,6 +47,8 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
 
   const testCases = selectTestCases(ledger, LAYERS, only);
   const results = [];
+  const runDir = `${now.replace(/[:.]/g, '-')}-mobile`;
+  const stopper = createStopper({ config, ledger, root, runner: 'mobile' });
   for (const testCase of testCases) {
     const finish = (outcome) => ({
       id: testCase.id,
@@ -65,6 +69,11 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
       results.push(finish({ result: 'blocked', reasons: ['a fresh database is needed before a mutating test, and reset is not allowed'] }));
       continue;
     }
+    const why = stopper.check(testCase);
+    if (why) {
+      results.push(finish(stopper.stoppedResult(testCase, why)));
+      continue;
+    }
     if (reset && testCase.mutates) reset();
     const ctx = {
       root,
@@ -76,6 +85,10 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
       projectDir,
       targetConfig: config.targets?.[testCase.layer] ?? null,
       target: testCase.layer,
+      // After a failed install or flow, the devices are probed again, so a lost device is told apart
+      // from a failure in the app.
+      reprobe: reprobe ?? (probes ? null : () => currentProbes(env)),
+      evidence: { dir: join(root, '.claude', 'e2e-engineer', 'evidence', runDir), rel: join('.claude', 'e2e-engineer', 'evidence', runDir) },
     };
     let outcome;
     try {
@@ -84,10 +97,13 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
       if (!(error instanceof Blocked)) throw error;
       outcome = { result: 'blocked', failures: [], reasons: [error.message], evidence: [] };
     }
-    results.push(finish(outcome));
+    const result = finish(outcome);
+    stopper.note(result, { testCase, deviceLost: outcome.deviceLost === true });
+    results.push(result);
   }
 
-  const recorded = recordResults(ledger, results, { now });
+  const recorded = recordResults(ledger, results, { now, stops: stopper.stops() });
+  pruneEvidence({ root, ledger, config, now });
   writeLedger(ledgerPath, ledger);
 
   const tally = {};
@@ -101,6 +117,7 @@ export async function runMobile({ ledgerPath, configPath, root, env, now, exec =
     opened: recorded.opened,
     flaky: recorded.flaky,
     transitions: recorded.transitions,
+    stops: recorded.stops,
     safety: decision.allowed,
   };
 }

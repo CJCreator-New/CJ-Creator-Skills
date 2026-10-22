@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { status, readLedger, testState } from './ledger.mjs';
+import { activeStops, doublePasses, status, readLedger, testState } from './ledger.mjs';
 import { canonical, planDigest, planState } from './plan.mjs';
 import { inScope, validatePlan } from './traceability.mjs';
 import { SEVERITIES } from './remediation.mjs';
@@ -470,6 +470,17 @@ function renderReport(c) {
     '### Out of scope for this release',
     '',
     bullets(c.tests.filter((t) => !inScope(t)).map((t) => `${t.id}: ${t.outOfScope}`)),
+    '### Runs stopped by a stop condition',
+    '',
+    bullets(activeStops(ledger).map((s) => `${s.runner}: ${s.reason} (${s.tests.length} test case(s))`)),
+    '### Passed against doubles, not live',
+    '',
+    'A pass against a double shows the app handles the integration as the double answers. It is not a live pass.',
+    '',
+    bullets(doublePasses(ledger)),
+    '### Evidence removed by the retention cap',
+    '',
+    bullets((ledger.evidencePruned || []).map((p) => `${p.folder}: ${p.reason}`)),
     '## Release recommendation',
     '',
     `${st.status}. The gate status is the recommendation. This report does not change it.`,
