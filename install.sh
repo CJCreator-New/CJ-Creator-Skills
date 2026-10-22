@@ -96,7 +96,7 @@ install_claude() {
   esac
   claude plugin marketplace add "$SRC"
   claude plugin marketplace update "$MARKETPLACE"
-  for plugin in forge repo-orchestrator; do
+  for plugin in forge repo-orchestrator frontend-engineer; do
     claude plugin install "$plugin@$MARKETPLACE"
     claude plugin update "$plugin@$MARKETPLACE"
   done

@@ -18,6 +18,14 @@
       "source": "./repo-orchestrator",
       "description": "Repository-aware engineering orchestrator: researches the repo, plans only the work needed, implements with file ownership, then tests once at the end and remediates by root cause.",
       "version": "0.1.0"
+    },
+    {
+      "name": "frontend-engineer",
+      "source": "./frontend-engineer",
+      "description": "Frontend engineering orchestrator: classifies the task, analyses the design reference, implements in parallel with file ownership, tests, checks the rendered page against the reference, and reports evidence-based status.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": ["frontend", "design-to-code", "visual-qa", "testing", "orchestration"]
     }
   ]
 }
