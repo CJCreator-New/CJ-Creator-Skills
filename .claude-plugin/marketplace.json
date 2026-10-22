@@ -42,6 +42,14 @@
       "version": "1.0.0",
       "license": "MIT",
       "keywords": ["e2e", "testing", "mobile", "browser", "api", "rbac", "orchestration"]
+    },
+    {
+      "name": "security-audit",
+      "source": "./security-audit",
+      "description": "Read-only security audit: maps the attack surface, runs specialist reviewers for secrets, dependencies, access control, input handling and configuration, and reports only findings with a reachable path. Never edits source.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": ["security", "audit", "secrets", "dependencies", "access-control", "owasp", "read-only"]
     }
   ]
 }
