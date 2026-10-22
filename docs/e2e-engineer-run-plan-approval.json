@@ -17,11 +17,18 @@
       "approvedAt": "2026-10-22",
       "approvedVia": "user approval in the session, after v0.5 (\"1 approve\")",
       "covers": "The fixture test plan at digest 41c9e839 (v0.5): TC-SEC-01 static checks, and the native cases TC-AND-01 and TC-IOS-01."
+    },
+    {
+      "planDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
+      "planCommit": "ce9c14f",
+      "approvedBy": "csaravana.csk@gmail.com",
+      "approvedAt": "2026-10-22",
+      "approvedVia": "user approval in the session, after v0.6 (\"approve 529f3e90\")",
+      "covers": "The fixture test plan at digest 529f3e90 (v0.6): the native cases out of scope, REQ-UI-001 and REQ-APR-004 confirmed, REQ-UI-004 at 24 by 24 CSS pixels and confirmed."
     }
   ],
   "notCovered": [
-    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest.",
-    "The plan at digest 529f3e90, which applies the decisions above. It needs its own approval."
+    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest."
   ],
   "decisions": {
     "recordedAt": "2026-10-22",
@@ -33,6 +40,6 @@
       "REQ-UI-004 is set to 24 by 24 CSS pixels (WCAG 2.2 SC 2.5.8, level AA) and confirmed; TC-UI-04 checks 24."
     ],
     "resultingDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
-    "status": "pending approval: the plan with these decisions applied has a new digest, and it is not approved until the user approves that digest"
+    "status": "approved with the plan at digest 529f3e90"
   }
 }
