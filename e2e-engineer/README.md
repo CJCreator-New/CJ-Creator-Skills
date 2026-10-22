@@ -2,7 +2,7 @@
 
 End-to-end testing for an application, built from its user journeys. It discovers the screens, the API and the database, plans the journeys behind an approval gate, then verifies them through the browser, mobile web, native Android and iOS, the API and the data layer. It reports a release status from evidence, not from test counts.
 
-**Version 0.6 (remediation and performance).** Builds on v0.1 to v0.5:
+**Version 1.0.** What it does:
 
 - **Intake and safety.** The run is refused unless every target, host, package, bundle and database is on the config allowlist. Production-looking names are refused without an override. Security probes are refused unless authorization is recorded.
 - **Build identity and tool readiness.** The commit and a fingerprint of the working tree. Native binaries are identified by their SHA-256. A target whose tools are missing is `blocked` with the reason. Nothing is installed.
@@ -13,17 +13,20 @@ End-to-end testing for an application, built from its user journeys. It discover
 - **API runner (`run-api.mjs`).** Runs the implemented api and db test cases against a target. Each mutating case starts from a fresh seed. Each run is recorded against the current build, and each confirmed failure opens one defect. A derived, unconfirmed requirement's failure is `needs-confirmation`, not a defect.
 - **Browser runner (`run-web.mjs`).** Drives the web and mobile-web test cases in Chromium, through the interface only: each control is found by its role, name or label, and the database is reset before each test case. Steps cover sign-in, fills, clicks, downloads, intercepted failures, viewport clipping, touch-target size and a built-in accessibility scan. Each test case stores a screenshot and a redacted log.
 - **Redaction (`redact.mjs`).** Every stored value is redacted before it is written: credential headers, credential keys at any depth, bearer and token-shaped strings, and every password value the run was given. Playwright traces are not stored, because they carry credentials that cannot be reliably removed.
+- **Cross-layer runner (`run-e2e.mjs`, `e2e-runner` agent).** An e2e test case acts in the UI, waits for the request the UI sends and checks its status, then checks the API and the stored data in the same test case. The failing step names the layer that disagrees.
 - **Mobile checks (`run-mobile.mjs`).** Static checks read the Android project's manifest and resources, with no device: a debuggable application or a hardcoded secret fails, and a secret is reported by its file and name, never by its value. Native Android and iOS cases run Maestro flows on an attached device or simulator. Each native run uses the binary recorded in the ledger, and that binary must match the build handover hash in the config. A missing device, tool, binary, flow or mismatch blocks the case, with the reason.
 - **Triage and handoff (`remediation.mjs`, `triage` agent).** Each defect gets a severity, an owner, a root cause and a disposition (the app or the test). A defect on a P0 journey or an access-control case is at least High, and a Critical defect needs an independent second review. Duplicates merge. A handoff packet gives the owner the requirement, the reproduction, what was observed, the acceptance criteria and the regression set, with no credential in it. The skill never writes the fix.
 - **Retest and regression (`retest.mjs`).** Test cases run by ID, through the runner for each layer. A fix is a new build. A defect moves to Retest Passed when its own test cases pass on that build, and closes only after its regression set passes there too. A failure first seen on the fixed build is a regression and keeps the defect open; a failure that an earlier defect already covers does not.
 - **Flaky and stale results.** A test case that passed and failed on the same build is `flaky`, never passed, and opens no defect on its own. A run from an earlier build, or from before the test case changed, is `stale`.
 - **Load (`run-perf.mjs`, `perf-runner` agent).** Opt-in, read-only load with a fixed number of users, a fixed time and a capped rate. It refuses to start without `loadLimits` in the config and `E2E_ALLOW_LOAD=1` for the run. A threshold the team has not confirmed is proposed, so a breach of it is `needs-confirmation`.
 - **Scope.** A test case the plan takes out of scope (`outOfScope`, with the reason) is not run and does not count toward the gate. The status and the report list it with its reason.
-- **Gate.** A P0 journey is verified only when every in-scope test case linked to it has a current pass. An open Critical or High defect is a FAIL until it closes, and any open defect keeps the gate from PASS. Precedence: FAIL, then BLOCKED, then PARTIALLY TESTED, then PASS.
+- **Gate.** A P0 journey is verified only when every in-scope test case linked to it has a current pass. An open Critical or High defect is a FAIL until it closes, and any open defect keeps the gate from PASS. A named person can accept the risk of one open defect, with the reason; the gate then reads PASS WITH ACCEPTED RISKS. Precedence: FAIL, then BLOCKED, then PARTIALLY TESTED, then PASS WITH ACCEPTED RISKS or PASS.
+- **Final report.** Files 00 to 11 and the data files, with a manifest of the ledger hash and each file's hash. `artifacts.mjs verify` renders the package again from the ledger and reports any difference.
+- **Self-test (`self-test.mjs`).** Runs the plugin on its own fixture through the same intake, runners, ledger and report a real run uses. It scores recall on the 13 planted defects, requires no finding on the clean control, and says which suites ran.
 - **Guard.** While a run is active, a write is allowed only under `.claude/e2e-engineer/`, the ledger is never written by a tool, secret files are never written, and the analysts are read-only.
-- **Planted-app fixture.** A small order-approval app on SQLite, with 11 switchable app-side defects, and a clean control (`PLANTED=none`). The worked plan has 15 requirements, 9 journeys and 21 test cases, all implemented; the two native cases are out of scope for this release. `flaky-cases.json` adds the two test cases that show planted defect 11.
+- **Planted-app fixture.** A small order-approval app on SQLite, with 11 switchable app-side defects, and a clean control (`PLANTED=none`). The worked plan has 15 requirements, 9 journeys and 23 test cases, all implemented; the two native cases are out of scope for this release. `flaky-cases.json` adds the two test cases that show planted defect 11. The manifest names the test cases that detect each planted defect.
 
-The cross-layer `e2e-runner`, the final release report and accepted risks come in v1.0. The full plan is in `docs/e2e-engineer-plan.md`, and the approval of that plan is in `docs/e2e-engineer-approval.json`.
+The full plan is in `docs/e2e-engineer-plan.md`, and the approval of that plan is in `docs/e2e-engineer-approval.json`. The approvals of the fixture's test plan are in `docs/e2e-engineer-run-plan-approval.json`.
 
 ## Layout
 
@@ -32,7 +35,7 @@ The cross-layer `e2e-runner`, the final release report and accepted risks come i
 hooks/
   hooks.json                      PreToolUse guard for Write, Edit, MultiEdit, NotebookEdit
   guard.mjs                       the guard: inert unless a run is active
-skills/e2e-engineer/SKILL.md      the skill: the v0.6 steps
+skills/e2e-engineer/SKILL.md      the skill: the v1.0 steps
 skills/e2e-engineer/references/   discovery and oracles, design references, strategy and approval,
                                   backend verification, web verification, mobile verification,
                                   triage and retest, performance, reporting and gates
@@ -46,6 +49,7 @@ agents/
   api-runner.md                   runs the API and data checks (writes through run-api.mjs)
   web-runner.md                   drives the browser (writes through run-web.mjs)
   mobile-runner.md                runs the static and native mobile checks (writes through run-mobile.mjs)
+  e2e-runner.md                   runs the cross-layer test cases (writes through run-e2e.mjs)
   perf-runner.md                  runs opt-in, bounded load (writes through run-perf.mjs)
   triage.md                       severity, owner, root cause, duplicates, flaky causes (read-only)
 scripts/
@@ -59,7 +63,9 @@ scripts/
   remediation.mjs                 defect lifecycle: triage, review, merge, handoff packet, claim, retest and
                                   regression evaluation
   retest.mjs                      runs test cases by ID, or a defect's retest or regression set
+  run-e2e.mjs                     runs the cross-layer test cases in Chromium and records them
   run-perf.mjs                    runs the perf test cases and records the results
+  self-test.mjs                   scores the plugin on its fixture: recall, clean control, flaky, report
   load.mjs                        load checks: validation, the two locks, the rate-capped load, thresholds
   plan.mjs                        plan digest, item checks, freeze, approval
   traceability.mjs                plan check: errors, gaps, warnings, coverage
@@ -73,7 +79,7 @@ scripts/
   browser.mjs                     finds Playwright in the repository, or at the configured path; never installs it
   redact.mjs                      redaction of credentials, tokens and cookies from stored values
   design.mjs                      design source resolution and the design map
-  artifacts.mjs                   renders files 00 to 11 and data/*.json
+  artifacts.mjs                   renders files 00 to 11, data/*.json and the report manifest; verify
   fingerprint.mjs                 copy of backend-engineer's, checked for identity
   validate.mjs                    structure check for the plugin, its hooks, its marketplace entry and the fixture plan
 templates/qa.config.example.json
@@ -120,6 +126,16 @@ node e2e-engineer/scripts/ledger.mjs defects .claude/e2e-engineer/ledger.json
 # Opt-in load, within config.loadLimits
 E2E_ALLOW_LOAD=1 node e2e-engineer/scripts/run-perf.mjs .claude/e2e-engineer/ledger.json qa.config.json --root . --base http://127.0.0.1:4173
 
+# Cross-layer test cases: act in the UI, then check the API and the data
+node e2e-engineer/scripts/run-e2e.mjs .claude/e2e-engineer/ledger.json qa.config.json --root .
+
+# Release with an open defect only on a named person's decision
+node e2e-engineer/scripts/ledger.mjs accept .claude/e2e-engineer/ledger.json DEF-001 --by <name> --reason "<why>"
+
+# Final report, and the check that it reproduces from the ledger
+node e2e-engineer/scripts/artifacts.mjs        .claude/e2e-engineer/ledger.json qa-artifacts
+node e2e-engineer/scripts/artifacts.mjs verify .claude/e2e-engineer/ledger.json qa-artifacts
+
 # Gate status, then finish the run (removes the active marker)
 node e2e-engineer/scripts/ledger.mjs status .claude/e2e-engineer/ledger.json
 node e2e-engineer/scripts/ledger.mjs finish .claude/e2e-engineer/ledger.json
@@ -128,35 +144,37 @@ node e2e-engineer/scripts/ledger.mjs finish .claude/e2e-engineer/ledger.json
 DB_FILE=<seeded.sqlite> PLANTED=all  node e2e-engineer/fixtures/planted-app/server.mjs
 DB_FILE=<seeded.sqlite> PLANTED=none node e2e-engineer/fixtures/planted-app/server.mjs
 
-# Tests and structure check
+# Tests, structure check, and the self-test (add --isolate to switch on each defect alone)
 node --test e2e-engineer/test/*.test.mjs tests/e2e-engineer-identity.test.mjs
 node e2e-engineer/scripts/validate.mjs
+node e2e-engineer/scripts/self-test.mjs --playwright <path to the playwright module>
 ```
 
 The run state lives in `.claude/e2e-engineer/` in the target repository. The plugin adds that folder to the target's `.gitignore` only with consent.
 
 ## What the fixture shows
 
-Measured with the command-line sequence above, on the plan at digest `529f3e90`:
+Measured with the command-line sequence above, on the fixture plan at digest `67892a13`:
 
-- **Clean control** (`PLANTED=none`, `clean-android-config`): the API suite passes 10 of 10, the browser suite 8 of 8, and the static check 1 of 1. No defect is opened. The gate reads **PASS**, with TC-AND-01 and TC-IOS-01 listed as out of scope.
-- **Planted build** (`PLANTED=all`, `planted-android-config`): 13 defects are opened. The API suite finds planted defects 2, 3, 4, 5, 6 and 7. The browser suite finds 1, 8, 9, 10 and 12, and TC-UI-08 shows defect 2 again through the form. The static check finds 13. The gate reads FAIL.
-- **One fix, end to end:** DEF-006 (defect 4, the cross-tenant read) is triaged as High (Medium is refused: it is on P0 journey J-04), handed off, and claimed. The fixed build (a new commit, and the server without that defect) is deployed and intake runs again. The retest passes TC-ORD-03, and the defect waits at Retest Passed. The regression run of 13 test cases closes it: the six failures there are all covered by defects found on the earlier build. The browser and static results from the earlier build are reported as stale.
-- **Planted defect 11:** in the self-test, `TC-FLAKY-02` passes, then fails after `TC-FLAKY-01` (marked read-only, but it approves the order) changes the shared data. The ledger reports it as flaky and opens no defect.
+- **Clean control** (`PLANTED=none`, `clean-android-config`): API 10 of 10, browser 8 of 8, cross-layer 2 of 2, static 1 of 1. No defect is opened. The gate reads **PASS**, with TC-AND-01 and TC-IOS-01 listed as out of scope.
+- **Planted build** (`PLANTED=all`, `planted-android-config`): 14 defects are opened, and the gate reads FAIL. The API suite finds planted defects 2, 3, 4, 5, 6 and 7; the browser suite finds 1, 8, 9, 10 and 12 (TC-UI-08 also fails, on defects 2 and 10); the cross-layer TC-E2E-01 finds 5 through the UI, at the request the page sends (`200, expected 403`); the static check finds 13. The report renders and verifies against the ledger.
+- **Self-test** (`self-test.mjs` with Chromium): verdict **pass**, 13 of 13 planted defects, no finding on the clean control, no unexplained failure on the planted build, defect 11 classified flaky, and the report reproduces. With `--isolate`, each defect switched on alone fails exactly the test cases the manifest names. Without Chromium, the verdict is `incomplete`: 8 of 13, with the browser suites named as not run.
+- **Remediation** (v0.6, measured then): DEF-006, the cross-tenant read, was triaged High (Medium is refused on a P0 journey), handed off, claimed, retested on a new build, and closed by its regression run. Results from the earlier build were reported as stale.
 
 ## Gate status
 
-`BLOCKED`, `PARTIALLY TESTED`, `FAIL` and `PASS` follow the precedence in the plan (G19). `PASS WITH ACCEPTED RISKS` needs a named decision for each accepted item, and it arrives in a later version.
+The five statuses follow the precedence in the plan (G19).
 
 - `FAIL` when an in-scope test case's current run failed, or a Critical or High defect is open.
 - `BLOCKED` until intake is allowed, the plan is frozen and approved, the approval matches the current plan, every target in scope is ready, and no P0 test case is blocked.
 - `PARTIALLY TESTED` until every in-scope test case has a current pass and no defect is open. Flaky, stale, not-run and needs-confirmation results keep it here.
+- `PASS WITH ACCEPTED RISKS` when the only open defects have a named risk acceptance, each with its person and reason.
 - `PASS` otherwise.
 
-## Limits in v0.6
+## Limits in v1.0
 
 - The analysts are prompts. Their output on a real repository has not been run here. The worked plan is hand-written in the shape they return.
-- Previous-version compatibility, the platform accessibility tree, and the device matrix are not run yet. They need more devices and tools than this version uses.
+- Previous-version compatibility, the platform accessibility tree, and the device matrix are not run. They need devices and tools this environment does not have, and they are not built.
 - iOS flows run only on a simulator where the app is already installed. The runner installs Android binaries only.
 - The fixture is a web app, so it has no native build. The native flow in the fixture is an example of the shape, and it cannot run here. The plan takes the native cases out of scope for this release (the user's decision, with D6 open), and the device path is covered by tests that inject a fake command runner.
 - Playwright is not installed by the plugin. It comes from the target repository, or from `browser.playwrightModule` in the config. Without it, the web targets are blocked, with the reason.
@@ -166,6 +184,7 @@ Measured with the command-line sequence above, on the plan at digest `529f3e90`:
 - A fix must arrive as a new build. A fix made only in the environment, on the same tree, shows as flaky and does not close the defect.
 - The regression set is the defect's journeys plus the P0 journeys. Test cases elsewhere are not rerun before a defect closes.
 - Load is client-side, read-only and small: no stress, soak or spike profiles, no load on writes, and no server-side metrics.
-- `PASS WITH ACCEPTED RISKS` and the cross-layer `e2e-runner` come in v1.0.
+- The self-test approves the fixture plan in its own scenario ledgers, as `e2e-engineer self-test (fixture plan)`. That approval covers the fixture only, never a user's repository.
+- Native self-tests do not run here: no emulator or simulator exists in this environment (M10). The static check runs everywhere.
 - Security probes are gated by the recorded authorization. The fixture has none, so its probes are refused. No probe is in the worked plan yet.
 - Approval records the approver as the name or identifier the user gives. The plan does not verify who they are.

@@ -21,6 +21,8 @@ A step is one user action or one check. Each finds its control the way a user do
 | `expectNotClipped` | Shows the element in full, not cut off by a container | No container that hides overflow cuts it off |
 | `expectMinTarget` | Gives a control at least this many CSS pixels in both directions | The control's size meets the minimum |
 | `scanA11y` | Runs the named built-in accessibility rules | No violation is found |
+| `expectResponse` | Clicks a control and waits for the request it sends to this method and path | The response has this status |
+| `check` | e2e test cases only: runs an http or db check from `backend-verification.md` | The check passes |
 
 The timeout for each step is five seconds. A step that does not pass within it is a failure, and the message says what did not happen.
 
@@ -60,3 +62,20 @@ The built-in rules are limited. `input-label` checks that each form field has an
 - Chromium only. Firefox and WebKit are not run.
 - Test cases run one at a time. Parallel browser lanes need a database with per-worker tenants, which the fixture does not have.
 - A visual comparison against a design is not run here. It is the design-reference work of a later phase.
+
+## Cross-layer (e2e) test cases
+
+A test case with the layer `e2e` mixes browser steps with backend `check` steps, so one test case acts as a user and then proves what the API serves and what the database stores:
+
+```json
+[
+  { "act": "signIn", "as": "manager" },
+  { "act": "goto", "path": "#/orders/o-2" },
+  { "act": "expectResponse", "role": "button", "name": "Approve", "method": "POST", "path": "/api/orders/o-2/approve", "status": 403 },
+  { "act": "check", "check": { "kind": "db", "query": "SELECT status, approvals FROM orders WHERE id = 'o-2'", "expectRows": [{ "status": "pending", "approvals": 0 }] } },
+  { "act": "check", "check": { "kind": "http", "as": "admin", "request": { "method": "GET", "path": "/api/orders/o-2" }, "expect": { "status": 200, "json": [{ "path": "order.status", "equals": "pending" }] } } }
+]
+```
+
+`run-e2e.mjs` runs them one at a time, each on a fresh database, with the same evidence as the browser runner. The failing step names the layer: `expectResponse` is the request the UI sent, `check` is the API or the database, and the other steps are the page. Backend check steps sign in by role through the API, with the same credentials as the browser.
+

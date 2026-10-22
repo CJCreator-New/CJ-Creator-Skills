@@ -13,7 +13,11 @@
     "outsider": "manager in tenant t2; must not see tenant t1 orders"
   },
   "routes": {
-    "ui": ["#/login", "#/orders", "#/orders/:id"],
+    "ui": [
+      "#/login",
+      "#/orders",
+      "#/orders/:id"
+    ],
     "api": [
       "POST /api/login",
       "GET /api/orders",
@@ -32,7 +36,10 @@
       "layer": "ui",
       "implementedIn": "public/index.html",
       "detector": "web-runner",
-      "expected": "dead control"
+      "expected": "dead control",
+      "detectedBy": [
+        "TC-UI-01"
+      ]
     },
     {
       "planted": 2,
@@ -41,7 +48,11 @@
       "layer": "api",
       "implementedIn": "server.mjs",
       "detector": "api-runner against the contract",
-      "expected": "validation defect"
+      "expected": "validation defect",
+      "detectedBy": [
+        "TC-ORD-01",
+        "TC-UI-08"
+      ]
     },
     {
       "planted": 3,
@@ -50,7 +61,10 @@
       "layer": "api",
       "implementedIn": "server.mjs and public/index.html",
       "detector": "rbac-analyst (hidden, not denied) and api-runner (direct call succeeds)",
-      "expected": "authorization defect"
+      "expected": "authorization defect",
+      "detectedBy": [
+        "TC-APR-04"
+      ]
     },
     {
       "planted": 4,
@@ -59,7 +73,10 @@
       "layer": "api",
       "implementedIn": "server.mjs",
       "detector": "api-runner (object-level probe)",
-      "expected": "critical access defect"
+      "expected": "critical access defect",
+      "detectedBy": [
+        "TC-ORD-03"
+      ]
     },
     {
       "planted": 5,
@@ -67,8 +84,12 @@
       "title": "Orders over 1000 can be approved by a manager, so the director step is missing",
       "layer": "api",
       "implementedIn": "server.mjs",
-      "detector": "flow-analyst gap, then e2e-runner",
-      "expected": "workflow defect"
+      "detector": "api-runner (TC-APR-02) and e2e-runner through the UI (TC-E2E-01)",
+      "expected": "workflow defect",
+      "detectedBy": [
+        "TC-APR-02",
+        "TC-E2E-01"
+      ]
     },
     {
       "planted": 6,
@@ -77,7 +98,10 @@
       "layer": "api",
       "implementedIn": "server.mjs",
       "detector": "api-runner barrier test",
-      "expected": "invariant violated: one approval per order"
+      "expected": "invariant violated: one approval per order",
+      "detectedBy": [
+        "TC-APR-03"
+      ]
     },
     {
       "planted": 7,
@@ -86,7 +110,10 @@
       "layer": "api",
       "implementedIn": "server.mjs",
       "detector": "api-runner against openapi.json",
-      "expected": "contract defect"
+      "expected": "contract defect",
+      "detectedBy": [
+        "TC-ORD-02"
+      ]
     },
     {
       "planted": 8,
@@ -95,7 +122,10 @@
       "layer": "ui",
       "implementedIn": "public/index.html",
       "detector": "web-runner with request interception",
-      "expected": "recovery defect"
+      "expected": "recovery defect",
+      "detectedBy": [
+        "TC-UI-02"
+      ]
     },
     {
       "planted": 9,
@@ -104,7 +134,10 @@
       "layer": "ui",
       "implementedIn": "public/index.html (planted-css)",
       "detector": "web-runner and mobile-runner (mobile web) at each viewport",
-      "expected": "layout defect"
+      "expected": "layout defect",
+      "detectedBy": [
+        "TC-UI-05"
+      ]
     },
     {
       "planted": 10,
@@ -113,7 +146,11 @@
       "layer": "ui",
       "implementedIn": "public/index.html",
       "detector": "web-runner (axe and keyboard)",
-      "expected": "accessibility defect"
+      "expected": "accessibility defect",
+      "detectedBy": [
+        "TC-UI-03",
+        "TC-UI-08"
+      ]
     },
     {
       "planted": 11,
@@ -122,7 +159,10 @@
       "layer": "test-suite",
       "implementedIn": "fixtures/planted-app/flaky-cases.json, loaded on top of the plan by the self-test",
       "detector": "orchestrator flake rule",
-      "expected": "classified flaky, not passed"
+      "expected": "classified flaky, not passed",
+      "detectedBy": [
+        "TC-FLAKY-02"
+      ]
     },
     {
       "planted": 12,
@@ -131,7 +171,10 @@
       "layer": "ui",
       "implementedIn": "public/index.html (planted-css)",
       "detector": "mobile-runner (mobile web)",
-      "expected": "accessibility defect"
+      "expected": "accessibility defect",
+      "detectedBy": [
+        "TC-UI-04"
+      ]
     },
     {
       "planted": 13,
@@ -140,8 +183,12 @@
       "layer": "static",
       "implementedIn": "fixtures/planted-android-config",
       "detector": "mobile-runner static check",
-      "expected": "security defect"
+      "expected": "security defect",
+      "detectedBy": [
+        "TC-SEC-01"
+      ]
     }
   ],
-  "cleanControl": "fixtures/planted-app with PLANTED=none, and fixtures/clean-android-config. Both must produce zero defects."
+  "cleanControl": "fixtures/planted-app with PLANTED=none, and fixtures/clean-android-config. Both must produce zero defects.",
+  "detectedByNote": "detectedBy lists the test cases that fail when the defect is switched on alone; the self-test checks this. Defect 11 is detected when TC-FLAKY-02 is classified flaky."
 }

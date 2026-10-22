@@ -10,7 +10,7 @@ import { describeBinary } from './binary.mjs';
 import { PLAN_COLLECTIONS, addItem, approvePlan, freezePlan, loadPlan, planDigest } from './plan.mjs';
 import { inScope } from './traceability.mjs';
 import { testHash, testState } from './results.mjs';
-import { claimFix, evaluateDefects, handOff, isOpen, mergeDefect, renderHandoff, reviewDefect, triageDefect } from './remediation.mjs';
+import { acceptRisk, acceptedFailure, claimFix, evaluateDefects, handOff, isOpen, mergeDefect, renderHandoff, reviewDefect, triageDefect } from './remediation.mjs';
 
 export { testState };
 
@@ -68,6 +68,13 @@ export async function recordBinary(ledger, { target, file, versionName, buildNum
   return entry;
 }
 
+// A test case counts toward the gate when it has a current pass, or a current failure whose risk was
+// accepted by a named person.
+function settled(ledger, testCaseId) {
+  const { state } = testState(ledger, testCaseId);
+  return state === 'passed' || (state === 'failed' && acceptedFailure(ledger, testCaseId));
+}
+
 // The in-scope test cases of a journey. An out-of-scope test case does not count toward the gate.
 function journeyTests(ledger, journeyId) {
   return ledger.testCases.filter((tc) => inScope(tc) && (tc.journeys || []).includes(journeyId));
@@ -75,9 +82,11 @@ function journeyTests(ledger, journeyId) {
 
 // Gate status with the precedence in the plan (G19): a failed test, or an open Critical or High
 // defect, gives FAIL; an unmet or blocked mandatory gate gives BLOCKED; a P0 journey that is not
-// verified gives PARTIALLY TESTED; otherwise PASS. A P0 journey is verified only when every test case
-// linked to it has a current pass. An approval counts only for the plan it was given for. A later
-// change to the plan makes it stale. Out-of-scope test cases are listed, and do not count.
+// verified gives PARTIALLY TESTED; otherwise PASS, or PASS WITH ACCEPTED RISKS when an open defect
+// has a named risk acceptance. A P0 journey is verified only when every test case linked to it has a
+// current pass, or a current failure whose risk was accepted. An approval counts only for the plan it
+// was given for. A later change to the plan makes it stale. Out-of-scope test cases are listed, and do
+// not count.
 export function status(ledger) {
   const outOfScope = ledger.testCases.filter((tc) => !inScope(tc)).map((tc) => ({ id: tc.id, reason: tc.outOfScope }));
   const result = gate(ledger);
@@ -86,9 +95,9 @@ export function status(ledger) {
 
 function gate(ledger) {
   const tests = ledger.testCases.filter(inScope);
-  const failed = tests.filter((tc) => testState(ledger, tc.id).state === 'failed').map((tc) => `${tc.id} failed`);
+  const failed = tests.filter((tc) => testState(ledger, tc.id).state === 'failed' && !acceptedFailure(ledger, tc.id)).map((tc) => `${tc.id} failed`);
   const severe = (ledger.defects || [])
-    .filter((d) => isOpen(d) && ['Critical', 'High'].includes(d.severity))
+    .filter((d) => isOpen(d) && !d.acceptedRisk && ['Critical', 'High'].includes(d.severity))
     .map((d) => `${d.id} (${d.severity}) is open: ${d.status}`);
   if (failed.length > 0 || severe.length > 0) return { status: 'FAIL', reasons: [...failed, ...severe] };
 
@@ -125,7 +134,7 @@ function gate(ledger) {
       unverified.push(`P0 journey ${journey.id} is not verified: no test case`);
       continue;
     }
-    const notPassed = tests.filter((tc) => testState(ledger, tc.id).state !== 'passed');
+    const notPassed = tests.filter((tc) => !settled(ledger, tc.id));
     if (notPassed.length > 0) {
       const detail = notPassed.map((tc) => `${tc.id} ${testState(ledger, tc.id).state}`).join(', ');
       unverified.push(`P0 journey ${journey.id} is not verified: ${detail}`);
@@ -135,12 +144,16 @@ function gate(ledger) {
   // journey is verified. PASS needs every test case in the plan to have a current pass.
   const p0Tests = new Set(p0.flatMap((journey) => journeyTests(ledger, journey.id).map((tc) => tc.id)));
   const others = tests
-    .filter((tc) => !p0Tests.has(tc.id) && testState(ledger, tc.id).state !== 'passed')
+    .filter((tc) => !p0Tests.has(tc.id) && !settled(ledger, tc.id))
     .map((tc) => `${tc.id} ${testState(ledger, tc.id).state}`);
-  const open = (ledger.defects || []).filter(isOpen).map((d) => `${d.id} is open: ${d.status}`);
+  const open = (ledger.defects || []).filter((d) => isOpen(d) && !d.acceptedRisk).map((d) => `${d.id} is open: ${d.status}`);
   if (unverified.length > 0 || others.length > 0 || open.length > 0) {
     return { status: 'PARTIALLY TESTED', reasons: [...unverified, ...others, ...open] };
   }
+  const accepted = (ledger.defects || [])
+    .filter((d) => isOpen(d) && d.acceptedRisk)
+    .map((d) => `${d.id} (${d.severity}) accepted by ${d.acceptedRisk.by}: ${d.acceptedRisk.reason}`);
+  if (accepted.length > 0) return { status: 'PASS WITH ACCEPTED RISKS', reasons: accepted };
   return { status: 'PASS', reasons: [] };
 }
 
@@ -234,7 +247,7 @@ async function main(argv) {
   const [command, ledgerPath, ...rest] = argv;
   if (!command || !ledgerPath) {
     throw new Error(
-      'usage: ledger.mjs <status|finish|load|add|design|freeze|approve|binary|defects|triage|review|merge|handoff|claim|evaluate> <ledger.json> [...]',
+      'usage: ledger.mjs <status|finish|load|add|design|freeze|approve|binary|defects|triage|review|merge|handoff|claim|accept|evaluate> <ledger.json> [...]',
     );
   }
   const { flags, positional } = parseFlags(rest);
@@ -295,6 +308,9 @@ async function main(argv) {
   } else if (command === 'claim') {
     const [id] = positional;
     output = claimFix(ledger, id, { by: flags.by, note: flags.note, now });
+  } else if (command === 'accept') {
+    const [id] = positional;
+    output = acceptRisk(ledger, id, { by: flags.by, reason: flags.reason, now });
   } else if (command === 'evaluate') {
     output = evaluateDefects(ledger, { now });
   } else {

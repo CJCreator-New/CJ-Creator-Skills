@@ -18,8 +18,8 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/CJCreator-New/CJ-Creator-Skills/main/install.ps1 | iex
 ```
 
-- **Claude Code** (when the `claude` CLI is on PATH): registers this repo as the `forge-marketplace` and installs `forge`, `repo-orchestrator`, `frontend-engineer` and `backend-engineer` at user scope.
-- **Other agents:** copies the `ponytail` skill to `~/.agents/skills/` (Windows: `%USERPROFILE%\.agents\skills\`). Forge, repo-orchestrator, frontend-engineer and backend-engineer depend on Claude Code's slash commands, hooks and subagents, so they stay Claude-only.
+- **Claude Code** (when the `claude` CLI is on PATH): registers this repo as the `forge-marketplace` and installs `forge`, `repo-orchestrator`, `frontend-engineer`, `backend-engineer` and `e2e-engineer` at user scope.
+- **Other agents:** copies the `ponytail` skill to `~/.agents/skills/` (Windows: `%USERPROFILE%\.agents\skills\`). Forge, repo-orchestrator, frontend-engineer, backend-engineer and e2e-engineer depend on Claude Code's slash commands, hooks and subagents, so they stay Claude-only.
 - **Where the files go:** a clone at `~/.local/share/cj-creator-skills/` (Windows: `%LOCALAPPDATA%\cj-creator-skills\`). Git is used when present; otherwise the GitHub archive is downloaded.
 - **Options:** `sh install.sh --ref <branch|tag> --agents-dir <dir> --skip-claude --skip-agents`. Piped installs take the same options after `sh -s --`, or the environment variables `CJ_SKILLS_REF`, `CJ_SKILLS_AGENTS_DIR`, `CJ_SKILLS_HOME` (PowerShell: `$env:` names, no parameters through `iex`).
 - **From a checkout:** `sh install.sh` (or `.\install.ps1`) installs that checkout in place instead of downloading a copy.
@@ -31,6 +31,7 @@ Manual install, Claude Code only:
 /plugin install repo-orchestrator@forge-marketplace
 /plugin install frontend-engineer@forge-marketplace
 /plugin install backend-engineer@forge-marketplace
+/plugin install e2e-engineer@forge-marketplace
 ```
 
 Then, in any project: `/forge-init` once (optional, `/forge` does it), then `/forge <feature request>`.

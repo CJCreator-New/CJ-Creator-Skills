@@ -10,7 +10,7 @@ import { validateLoadChecks } from './load.mjs';
 
 export const ORACLES = ['spec', 'design', 'contract', 'doc', 'observed'];
 export const PRIORITIES = ['P0', 'P1', 'P2'];
-export const LAYERS = ['web', 'mobile-web', 'android', 'ios', 'api', 'db', 'static', 'perf'];
+export const LAYERS = ['web', 'mobile-web', 'e2e', 'android', 'ios', 'api', 'db', 'static', 'perf'];
 export const AUTOMATION = ['planned', 'implemented', 'executed'];
 export const BRANCH_KINDS = ['success', 'failure', 'permission', 'cancel', 'duplicate', 'recovery'];
 export const OUTCOMES = ['allowed', 'denied', 'conditional'];
@@ -141,7 +141,7 @@ export function validatePlan(ledger) {
     if (test.automation === 'implemented' && ['api', 'db'].includes(test.layer)) {
       for (const problem of validateChecks(test)) errors.push(problem);
     }
-    if (test.automation === 'implemented' && ['web', 'mobile-web'].includes(test.layer)) {
+    if (test.automation === 'implemented' && ['web', 'mobile-web', 'e2e'].includes(test.layer)) {
       for (const problem of validateSteps(test)) errors.push(problem);
     }
     if (test.automation === 'implemented' && ['static', 'android', 'ios'].includes(test.layer)) {

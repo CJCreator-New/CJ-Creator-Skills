@@ -28,7 +28,8 @@
     }
   ],
   "notCovered": [
-    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest."
+    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest.",
+    "The plan at digest 67892a13 (pending above)."
   ],
   "decisions": {
     "recordedAt": "2026-10-22",
@@ -41,5 +42,10 @@
     ],
     "resultingDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
     "status": "approved with the plan at digest 529f3e90"
+  },
+  "pending": {
+    "planDigest": "67892a13b426a2a1d2de15c02a81bc156ac441171e8d1b523b707bffab23a7ba",
+    "change": "v1.0 adds the cross-layer test cases TC-E2E-01 (a manager approval of an order over 1000 is refused at the UI request, in the database and in the API) and TC-E2E-02 (a manager approval through the UI is stored and served). Nothing else changed.",
+    "status": "not approved: it needs the user's approval of this digest"
   }
 }

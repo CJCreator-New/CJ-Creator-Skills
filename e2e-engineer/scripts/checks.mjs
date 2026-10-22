@@ -126,7 +126,7 @@ export function classify(result, testCase, requirementsById) {
   return 'failed';
 }
 
-// Runs one check. Returns { ok, message }. Throws Blocked when the check cannot run here.
+// Runs one http check. Returns { ok, message }. Throws Blocked when the check cannot run here.
 async function runHttp(check, ctx, { probe = false } = {}) {
   if (probe && !ctx.probesAllowed) {
     throw new Blocked('security probes are refused: no authorization is recorded for this run');
@@ -141,7 +141,8 @@ async function runHttp(check, ctx, { probe = false } = {}) {
   return { ok: failures.length === 0, message: failures.join('; '), status: response.status, body: response.body };
 }
 
-async function runCheck(check, ctx) {
+// Runs one check of any kind. Returns { ok, message }. Throws Blocked when the check cannot run here.
+export async function runCheck(check, ctx) {
   if (check.kind === 'db') {
     const rows = await ctx.query(check.query);
     const failures = assertRows(rows, check.expectRows);

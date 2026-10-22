@@ -9,7 +9,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Blocked, Infrastructure, classify, resolveValue } from './checks.mjs';
+import { Blocked, Infrastructure, classify, resolveValue, runCheck } from './checks.mjs';
+import { createContext } from './run-api.mjs';
 import { readLedger, recordResults, writeLedger } from './ledger.mjs';
 import { selectTestCases } from './results.mjs';
 import { planDigest } from './plan.mjs';
@@ -89,6 +90,8 @@ function describeStep(step) {
       return `${step.testId} did not show "${step.text}"`;
     case 'expectDownload':
       return `no download started from ${step.role} "${step.name}"`;
+    case 'expectResponse':
+      return `${step.role} "${step.name}" sent no ${step.method} ${step.path}`;
     default:
       return `${step.act} did not pass`;
   }
@@ -175,6 +178,22 @@ export async function runStep(step, { page, base, ctx }) {
       }
       return;
     }
+    case 'expectResponse': {
+      const [response] = await Promise.all([
+        page.waitForResponse((r) => r.request().method() === step.method && new URL(r.url()).pathname === step.path, { timeout: STEP_TIMEOUT_MS }),
+        page.getByRole(step.role, { name: step.name, exact: true }).click(),
+      ]);
+      if (response.status() !== step.status) {
+        throw new StepFailed(`the response to ${step.method} ${step.path} was ${response.status()}, expected ${step.status}`);
+      }
+      return;
+    }
+    case 'check': {
+      if (!ctx.api) throw new Blocked('a backend check step runs only in an e2e test case');
+      const outcome = await runCheck(step.check, ctx.api);
+      if (!outcome.ok) throw new StepFailed(`${step.check.kind}: ${outcome.message}`);
+      return;
+    }
     case 'scanA11y': {
       const violations = await page.evaluate(a11yInPage, step.rules);
       if (violations.length > 0) throw new StepFailed(violations.join('; '));
@@ -255,7 +274,13 @@ export async function runWebTestCase({ testCase, browser, base, viewports, ctx, 
 }
 
 // Runs every implemented web and mobile-web test case. Returns the results, sorted by ID.
-export async function runWeb({ ledgerPath, configPath, root, env, now, playwright = null, bases = {}, only = null }) {
+export function runWeb(options) {
+  return runBrowserSuite({ ...options, layers: ['web', 'mobile-web'] });
+}
+
+// The browser suite for the given layers. The e2e layer also gets an API context, so its backend
+// check steps can sign in by role, send requests and read the database.
+export async function runBrowserSuite({ ledgerPath, configPath, root, env, now, playwright = null, bases = {}, only = null, layers }) {
   const ledger = readLedger(ledgerPath);
   if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('the run is not allowed; run intake first');
   if (!ledger.approval) throw new Error('the test plan is not approved');
@@ -269,6 +294,7 @@ export async function runWeb({ ledgerPath, configPath, root, env, now, playwrigh
   const baseFor = {
     web: bases.web ?? config.targets?.web?.baseUrl ?? null,
     'mobile-web': bases.mobile ?? config.targets?.['mobile-web']?.baseUrl ?? config.targets?.web?.baseUrl ?? null,
+    e2e: bases.web ?? config.targets?.web?.baseUrl ?? null,
   };
   const viewports = config.viewports ?? {};
   const roles = new Map((ledger.roles || []).map((r) => [r.id, r]));
@@ -286,6 +312,7 @@ export async function runWeb({ ledgerPath, configPath, root, env, now, playwrigh
       }
       return { username, password };
     },
+    api: layers.includes('e2e') && baseFor.e2e ? createContext({ ledger, config, root, base: baseFor.e2e, env }) : null,
   };
 
   const runDir = now.replace(/[:.]/g, '-');
@@ -302,7 +329,7 @@ export async function runWeb({ ledgerPath, configPath, root, env, now, playwrigh
   }
 
   const requirementsById = new Map((ledger.requirements || []).map((r) => [r.id, r]));
-  const testCases = selectTestCases(ledger, ['web', 'mobile-web'], only);
+  const testCases = selectTestCases(ledger, layers, only);
   const results = [];
   for (const testCase of testCases) {
     const finish = (outcome) => ({

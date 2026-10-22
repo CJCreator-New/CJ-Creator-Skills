@@ -91,7 +91,7 @@ test('writeArtifacts writes every file under the output folder', () => {
   const dir = mkdtempSync(join(tmpdir(), 'e2e-artifacts-'));
   try {
     const written = writeArtifacts(fixtureLedger(), dir, { now: NOW });
-    assert.equal(written.length, 17);
+    assert.equal(written.length, 18, 'the 17 files and the report manifest');
     assert.match(readFileSync(join(dir, NAMES.summary), 'utf8'), /# 00 QA executive summary/);
     assert.ok(readFileSync(join(dir, DATA_FILES.defects), 'utf8').includes('"defects": []'));
   } finally {
@@ -119,4 +119,25 @@ test('the register and the report show remediation, flaky and out-of-scope state
   assert.match(files[NAMES.report], /\| High \| 1 \| 0 \|/);
   assert.match(files[NAMES.catalog], /## Out of scope/);
   assert.ok(files[DATA_FILES.defects].includes('"HO-DEF-001-1"'));
+});
+
+test('a written package reproduces from its ledger, and a change to either is detected', async () => {
+  const { writeFileSync: write, readFileSync: read } = await import('node:fs');
+  const { verifyArtifacts } = await import('../scripts/artifacts.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-verify-'));
+  try {
+    const ledgerPath = join(dir, 'ledger.json');
+    const ledger = fixtureLedger();
+    const text = `${JSON.stringify(ledger, null, 2)}\n`;
+    write(ledgerPath, text);
+    writeArtifacts(ledger, join(dir, 'out'), { now: NOW, ledgerText: text });
+    assert.deepEqual(verifyArtifacts(ledgerPath, join(dir, 'out')), { ok: true, problems: [] });
+    const report = join(dir, 'out', NAMES.report);
+    write(report, read(report, 'utf8').replace('Status:', 'Status (edited):'));
+    assert.deepEqual(verifyArtifacts(ledgerPath, join(dir, 'out')).problems, [`${NAMES.report} was changed after it was rendered`]);
+    write(ledgerPath, text.replace('"configName": "fixture"', '"configName": "other"'));
+    assert.ok(verifyArtifacts(ledgerPath, join(dir, 'out')).problems.includes('the ledger changed since the report was rendered'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

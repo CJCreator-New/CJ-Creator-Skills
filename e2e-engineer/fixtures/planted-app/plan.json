@@ -1741,6 +1741,202 @@
         }
       ],
       "outOfScope": "native targets are out of scope for this release: no device, emulator or simulator is available (user decision of 2026-10-22; D6)"
+    },
+    {
+      "id": "TC-E2E-01",
+      "title": "A manager approval of an order over 1000 is refused at every layer",
+      "layer": "e2e",
+      "mutates": true,
+      "oracle": "contract",
+      "journeys": [
+        "J-03"
+      ],
+      "operations": [
+        "OP-APPROVE",
+        "OP-GET"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
+      "controls": [
+        "SCR-ORDER-DETAIL.approve"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS",
+        "FX-ORDERS-SEED"
+      ],
+      "automation": "implemented",
+      "requirements": [
+        "REQ-APR-002"
+      ],
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "expected": [
+        "the approve request the UI sends for o-2 (5000) returns 403",
+        "o-2 is still pending, with no approval, in the database",
+        "the API returns o-2 as pending to an admin",
+        "the order page shows o-2 as pending when it is opened again"
+      ],
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-2"
+        },
+        {
+          "act": "expectResponse",
+          "role": "button",
+          "name": "Approve",
+          "method": "POST",
+          "path": "/api/orders/o-2/approve",
+          "status": 403
+        },
+        {
+          "act": "check",
+          "check": {
+            "kind": "db",
+            "query": "SELECT status, approvals FROM orders WHERE id = 'o-2'",
+            "expectRows": [
+              {
+                "status": "pending",
+                "approvals": 0
+              }
+            ]
+          }
+        },
+        {
+          "act": "check",
+          "check": {
+            "kind": "http",
+            "as": "admin",
+            "request": {
+              "method": "GET",
+              "path": "/api/orders/o-2"
+            },
+            "expect": {
+              "status": 200,
+              "json": [
+                {
+                  "path": "order.status",
+                  "equals": "pending"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "act": "goto",
+          "path": "#/orders"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-2"
+        },
+        {
+          "act": "expectTestId",
+          "testId": "status",
+          "text": "pending"
+        }
+      ]
+    },
+    {
+      "id": "TC-E2E-02",
+      "title": "A manager approval through the UI is stored and served",
+      "layer": "e2e",
+      "mutates": true,
+      "oracle": "contract",
+      "journeys": [
+        "J-03"
+      ],
+      "operations": [
+        "OP-APPROVE",
+        "OP-GET"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
+      "controls": [
+        "SCR-ORDER-DETAIL.approve"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS",
+        "FX-ORDERS-SEED"
+      ],
+      "automation": "implemented",
+      "requirements": [
+        "REQ-APR-001"
+      ],
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "expected": [
+        "the approve request the UI sends for o-1 (500) returns 200",
+        "o-1 is approved, with one approval, in the database",
+        "the API returns o-1 as approved to an admin",
+        "the order page shows o-1 as approved"
+      ],
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-1"
+        },
+        {
+          "act": "expectResponse",
+          "role": "button",
+          "name": "Approve",
+          "method": "POST",
+          "path": "/api/orders/o-1/approve",
+          "status": 200
+        },
+        {
+          "act": "check",
+          "check": {
+            "kind": "db",
+            "query": "SELECT status, approvals FROM orders WHERE id = 'o-1'",
+            "expectRows": [
+              {
+                "status": "approved",
+                "approvals": 1
+              }
+            ]
+          }
+        },
+        {
+          "act": "check",
+          "check": {
+            "kind": "http",
+            "as": "admin",
+            "request": {
+              "method": "GET",
+              "path": "/api/orders/o-1"
+            },
+            "expect": {
+              "status": 200,
+              "json": [
+                {
+                  "path": "order.status",
+                  "equals": "approved"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "act": "expectTestId",
+          "testId": "status",
+          "text": "approved"
+        }
+      ]
     }
   ],
   "designMap": {

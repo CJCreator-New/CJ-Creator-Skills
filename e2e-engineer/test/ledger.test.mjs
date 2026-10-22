@@ -19,7 +19,7 @@ import {
 import { approvePlan, freezePlan } from '../scripts/plan.mjs';
 
 // The fixture's P0 journeys and the test cases that cover each one.
-const P0 = { 'J-01': ['TC-AUTH-01', 'TC-AUTH-02', 'TC-UI-06'], 'J-02': ['TC-ORD-01', 'TC-ORD-02', 'TC-UI-08'], 'J-03': ['TC-APR-01', 'TC-APR-02', 'TC-APR-03', 'TC-APR-04', 'TC-DB-01', 'TC-UI-09'], 'J-04': ['TC-ORD-03'] };
+const P0 = { 'J-01': ['TC-AUTH-01', 'TC-AUTH-02', 'TC-UI-06'], 'J-02': ['TC-ORD-01', 'TC-ORD-02', 'TC-UI-08'], 'J-03': ['TC-APR-01', 'TC-APR-02', 'TC-APR-03', 'TC-APR-04', 'TC-DB-01', 'TC-UI-09', 'TC-E2E-01', 'TC-E2E-02'], 'J-04': ['TC-ORD-03'] };
 
 function run(ledger, testCase, result, extra = {}) {
   return recordRun(ledger, { testCase, result, now: NOW, ...extra });

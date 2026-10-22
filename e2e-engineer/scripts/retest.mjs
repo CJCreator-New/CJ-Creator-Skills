@@ -14,12 +14,14 @@ import { regressionSet } from './remediation.mjs';
 import { testState } from './results.mjs';
 import { runApi } from './run-api.mjs';
 import { runWeb } from './run-web.mjs';
+import { runE2e } from './run-e2e.mjs';
 import { runMobile } from './run-mobile.mjs';
 import { runPerf } from './run-perf.mjs';
 
 const RUNNERS = [
   { name: 'api', layers: ['api', 'db'], run: runApi },
   { name: 'web', layers: ['web', 'mobile-web'], run: runWeb },
+  { name: 'e2e', layers: ['e2e'], run: runE2e },
   { name: 'mobile', layers: ['static', 'android', 'ios'], run: runMobile },
   { name: 'perf', layers: ['perf'], run: runPerf },
 ];
@@ -33,7 +35,7 @@ export function retestTargets(ledger, { defect, regression = false, tests = null
   return regression ? regressionSet(ledger, found) : found.testCases;
 }
 
-// Runs the IDs through their runners, in the order api, web, mobile, perf. `runners` lets a test
+// Runs the IDs through their runners, in the order api, web, e2e, mobile, perf. `runners` lets a test
 // replace a runner. Returns the summary of each runner that ran, and the defect after the runs.
 export async function retest({ ledgerPath, configPath, root, env, now, defect = null, regression = false, tests = null, runners = {}, options = {} }) {
   const ledger = readLedger(ledgerPath);
@@ -84,7 +86,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     defect: flags.defect ?? null,
     regression: flags.regression === true,
     tests: flags.tests ? flags.tests.split(',') : null,
-    options: { web: { bases: { web: flags.web, mobile: flags.mobile } }, api: { base: flags.base }, perf: { base: flags.base } },
+    options: { web: { bases: { web: flags.web, mobile: flags.mobile } }, e2e: { bases: { web: flags.web } }, api: { base: flags.base }, perf: { base: flags.base } },
   })
     .then((summary) => console.log(JSON.stringify(summary, null, 2)))
     .catch((error) => {

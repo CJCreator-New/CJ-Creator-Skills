@@ -62,6 +62,14 @@ const code = ['server.mjs', 'public/index.html'].map((file) => readFileSync(join
 for (const defect of fixture.defects) {
   if (defect.flag) check(code.includes(`'${defect.flag}'`), `planted flag ${defect.flag} is not wired into the fixture code`);
 }
+// Each planted defect names the test cases that detect it, and each one is in the plan or the flaky cases.
+const knownTests = new Set(
+  ['plan.json', 'flaky-cases.json'].flatMap((file) => readJson(join(fixtureDir, file)).testCases.map((tc) => tc.id)),
+);
+for (const defect of fixture.defects) {
+  check(Array.isArray(defect.detectedBy) && defect.detectedBy.length > 0, `planted defect ${defect.planted} needs detectedBy`);
+  for (const id of defect.detectedBy || []) check(knownTests.has(id), `planted defect ${defect.planted} names ${id}, which is not a fixture test case`);
+}
 let openapiParses = true;
 try {
   readJson(join(fixtureDir, 'openapi.json'));

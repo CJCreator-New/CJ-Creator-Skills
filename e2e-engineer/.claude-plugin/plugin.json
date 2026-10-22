@@ -1,7 +1,7 @@
 {
   "name": "e2e-engineer",
-  "version": "0.1.0",
-  "description": "End-to-end test engineering skill: discovers the app and its user journeys, plans and gets approval before running, verifies journeys through web, mobile web, native Android and iOS, the API and the database, and reports an evidence-based release status. Built in phases; v0.1 is the foundation.",
+  "version": "1.0.0",
+  "description": "End-to-end test engineering: discovers the app and its user journeys, plans them behind an approval gate, verifies them through web, mobile web, native Android and iOS, cross-layer UI-to-API-to-database checks, the API and the database, then triages defects, hands them to their owners, retests each fix, and reports an evidence-based release status.",
   "author": {
     "name": "CJCreator"
   }

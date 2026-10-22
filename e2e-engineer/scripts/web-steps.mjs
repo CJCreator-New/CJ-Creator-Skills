@@ -1,7 +1,13 @@
-// The step vocabulary for web and mobile-web test cases. A test case lists its steps in order. Each step
-// names one user action or one check, and it finds its control the way a user does: by its accessible
-// role and name, or by its label. The plan check validates the steps with this module, without a
-// browser, so a step that cannot run is refused when the plan is frozen.
+// The step vocabulary for web, mobile-web and e2e test cases. A test case lists its steps in order. Each
+// step names one user action or one check, and it finds its control the way a user does: by its
+// accessible role and name, or by its label. The plan check validates the steps with this module,
+// without a browser, so a step that cannot run is refused when the plan is frozen.
+//
+// An e2e (cross-layer) test case may also list backend steps, { "act": "check", "check": { ... } },
+// where the check is an http or db check from checks.mjs. They run in order with the browser steps, so
+// one test case can act through the UI and then verify the API and the stored data.
+
+import { validateChecks } from './checks.mjs';
 
 export const ACTS = [
   'signIn',
@@ -17,6 +23,8 @@ export const ACTS = [
   'expectNotClipped',
   'expectMinTarget',
   'scanA11y',
+  'expectResponse',
+  'check',
 ];
 
 export const ROLES = ['button', 'link', 'textbox', 'table', 'heading', 'status', 'alert'];
@@ -32,11 +40,29 @@ function need(step, fields, at, problems) {
 }
 
 // Returns the problems with one step. The check is on shape only; whether a control exists is a run-time
-// question, answered by the browser.
-export function validateStep(step, at) {
+// question, answered by the browser. Backend checks are allowed in e2e test cases only.
+export function validateStep(step, at, layer = 'web') {
   const problems = [];
   if (!step || !ACTS.includes(step.act)) return [`${at}: act must be one of ${ACTS.join(', ')}`];
   switch (step.act) {
+    case 'check':
+      if (layer !== 'e2e') {
+        problems.push(`${at}: a backend check step is allowed only in an e2e test case`);
+        break;
+      }
+      if (!step.check || !['http', 'db'].includes(step.check.kind)) {
+        problems.push(`${at}: check needs an http or db check`);
+        break;
+      }
+      for (const problem of validateChecks({ id: at, checks: [step.check] })) problems.push(problem.replace(`${at} check 1`, at));
+      break;
+    case 'expectResponse':
+      need(step, ['role', 'name', 'method', 'path', 'status'], at, problems);
+      if (step.role && !ROLES.includes(step.role)) problems.push(`${at}: role must be one of ${ROLES.join(', ')}`);
+      if (step.method && !METHODS.includes(step.method)) problems.push(`${at}: method must be one of ${METHODS.join(', ')}`);
+      if (step.path && !String(step.path).startsWith('/')) problems.push(`${at}: expectResponse path must start with /`);
+      if (step.status !== undefined && !Number.isInteger(step.status)) problems.push(`${at}: status must be an integer`);
+      break;
     case 'signIn':
       need(step, ['as'], at, problems);
       break;
@@ -92,6 +118,6 @@ export function validateStep(step, at) {
 export function validateSteps(testCase) {
   if (!Array.isArray(testCase.steps) || testCase.steps.length === 0) return [`test case ${testCase.id} has no steps`];
   const problems = [];
-  testCase.steps.forEach((step, i) => problems.push(...validateStep(step, `${testCase.id} step ${i + 1}`)));
+  testCase.steps.forEach((step, i) => problems.push(...validateStep(step, `${testCase.id} step ${i + 1}`, testCase.layer)));
   return problems;
 }

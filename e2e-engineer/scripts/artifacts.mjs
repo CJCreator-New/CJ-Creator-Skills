@@ -4,7 +4,8 @@
 // reads a clock, a credential or a secret. Accounts appear as the environment-variable names that
 // hold them.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { status, readLedger, testState } from './ledger.mjs';
@@ -37,7 +38,7 @@ export const DATA_FILES = {
   defects: 'data/defect-register.json',
 };
 
-const LAYER_ORDER = ['static', 'api', 'db', 'web', 'mobile-web', 'android', 'ios', 'perf'];
+const LAYER_ORDER = ['static', 'api', 'db', 'web', 'mobile-web', 'e2e', 'android', 'ios', 'perf'];
 
 const cell = (value) => (value === undefined || value === null ? '' : String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' '));
 const short = (hash) => (hash ? hash.slice(0, 12) : 'none');
@@ -436,6 +437,15 @@ function renderReport(c) {
       const of = (ledger.defects || []).filter((d) => d.severity === sev && d.disposition !== 'duplicate');
       return [sev, of.filter((d) => d.status !== 'Closed').length, of.filter((d) => d.status === 'Closed').length];
     })),
+    '## Accepted risks',
+    '',
+    'Each item is an open defect that a named person decided to release with. It stays open, and its failures stay in this report.',
+    '',
+    bullets(
+      (ledger.defects || [])
+        .filter((d) => d.status !== 'Closed' && d.acceptedRisk)
+        .map((d) => `${d.id} (${d.severity}): ${d.title}. Accepted by ${d.acceptedRisk.by} on ${d.acceptedRisk.at}: ${d.acceptedRisk.reason}`),
+    ),
     '## Security and access control',
     '',
     `Permissions with test cases: ${cov.permissions.withTestCases} of ${cov.permissions.total}. Security probes: ${ledger.intake?.safety?.securityProbes?.allowed ? 'allowed' : `refused (${ledger.intake?.safety?.securityProbes?.reason})`}.`,
@@ -527,23 +537,65 @@ export function renderArtifacts(ledger, { now }) {
   return files;
 }
 
-export function writeArtifacts(ledger, outDir, { now }) {
+export const MANIFEST = 'data/report-manifest.json';
+
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+// Writes every artifact, and a manifest with the render time, the SHA-256 of the ledger file it was
+// rendered from, and the SHA-256 of each file. With the manifest, the package can be checked later
+// against the ledger: verifyArtifacts renders it again and compares.
+export function writeArtifacts(ledger, outDir, { now, ledgerText = null }) {
   const files = renderArtifacts(ledger, { now });
   for (const [path, text] of Object.entries(files)) {
     const target = join(outDir, path);
     mkdirSync(join(target, '..'), { recursive: true });
     writeFileSync(target, text);
   }
-  return Object.keys(files).sort();
+  const manifest = {
+    generatedAt: now,
+    ledgerSha256: ledgerText === null ? null : sha256(ledgerText),
+    files: Object.fromEntries(Object.entries(files).map(([path, text]) => [path, sha256(text)]).sort(([a], [b]) => (a < b ? -1 : 1))),
+  };
+  writeFileSync(join(outDir, MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`);
+  return [...Object.keys(files), MANIFEST].sort();
+}
+
+// Checks that a written package reproduces from the ledger: the ledger file is the one it was rendered
+// from, a fresh render at the recorded time gives the same bytes, and no file was changed on disk.
+export function verifyArtifacts(ledgerPath, outDir) {
+  const problems = [];
+  const manifestPath = join(outDir, MANIFEST);
+  if (!existsSync(manifestPath)) return { ok: false, problems: [`${MANIFEST} is missing`] };
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const ledgerText = readFileSync(ledgerPath, 'utf8');
+  if (manifest.ledgerSha256 !== sha256(ledgerText)) problems.push('the ledger changed since the report was rendered');
+  const files = renderArtifacts(readLedger(ledgerPath), { now: manifest.generatedAt });
+  for (const [path, text] of Object.entries(files)) {
+    if (manifest.files[path] !== sha256(text)) problems.push(`${path} does not reproduce from the ledger`);
+    const onDisk = join(outDir, path);
+    if (!existsSync(onDisk)) problems.push(`${path} is missing`);
+    else if (sha256(readFileSync(onDisk, 'utf8')) !== manifest.files[path]) problems.push(`${path} was changed after it was rendered`);
+  }
+  for (const path of Object.keys(manifest.files)) if (!(path in files)) problems.push(`${path} is not part of the package`);
+  return { ok: problems.length === 0, problems };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const [ledgerPath, outDir] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const verify = args[0] === 'verify';
+  const [ledgerPath, outDir] = verify ? args.slice(1) : args;
   if (!ledgerPath || !outDir) {
-    console.error('usage: artifacts.mjs <ledger.json> <out-dir>');
+    console.error('usage: artifacts.mjs [verify] <ledger.json> <out-dir>');
     process.exit(1);
   }
-  const ledger = readLedger(resolve(ledgerPath));
-  const written = writeArtifacts(ledger, resolve(outDir), { now: new Date().toISOString() });
-  console.log(written.join('\n'));
+  if (verify) {
+    const result = verifyArtifacts(resolve(ledgerPath), resolve(outDir));
+    console.log(JSON.stringify(result, null, 2));
+    process.exitCode = result.ok ? 0 : 1;
+  } else {
+    const ledgerText = readFileSync(resolve(ledgerPath), 'utf8');
+    const ledger = readLedger(resolve(ledgerPath));
+    const written = writeArtifacts(ledger, resolve(outDir), { now: new Date().toISOString(), ledgerText });
+    console.log(written.join('\n'));
+  }
 }

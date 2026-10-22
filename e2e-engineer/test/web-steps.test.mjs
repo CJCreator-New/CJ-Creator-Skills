@@ -19,9 +19,18 @@ describe('the step vocabulary', () => {
       { act: 'expectNotClipped', role: 'table' },
       { act: 'expectMinTarget', role: 'button', name: 'Approve', min: 44 },
       { act: 'scanA11y', rules: ['input-label', 'button-name'] },
+      { act: 'expectResponse', role: 'button', name: 'Approve', method: 'POST', path: '/api/orders/o-1/approve', status: 200 },
     ];
     assert.deepEqual(good.map((s) => validateStep(s, 'x')), good.map(() => []));
-    assert.deepEqual(ACTS.length, 13);
+    assert.deepEqual(ACTS.length, 15);
+  });
+
+  test('a backend check step is allowed in an e2e test case only, and is checked like any check', () => {
+    const step = { act: 'check', check: { kind: 'db', query: "SELECT status FROM orders WHERE id = 'o-2'", expectRows: [{ status: 'pending' }] } };
+    assert.deepEqual(validateStep(step, 'x', 'e2e'), []);
+    assert.match(validateStep(step, 'x', 'web')[0], /allowed only in an e2e test case/);
+    assert.match(validateStep({ act: 'check', check: { kind: 'probe' } }, 'x', 'e2e')[0], /needs an http or db check/);
+    assert.match(validateStep({ act: 'check', check: { kind: 'db', query: 'DELETE FROM orders', expectRows: [] } }, 'x', 'e2e')[0], /^x: query must be one SELECT statement/);
   });
 
   test('an unknown act is refused, with the list of acts', () => {

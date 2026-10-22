@@ -247,3 +247,34 @@ describe('selecting test cases by ID', () => {
     assert.ok(!selectTestCases(ledger, ['android', 'ios']).length, 'out-of-scope cases are not selected');
   });
 });
+
+describe('accepted risks', () => {
+  test('a named person accepts a triaged defect, and the gate reads PASS WITH ACCEPTED RISKS', async () => {
+    const { acceptRisk } = await import('../scripts/remediation.mjs');
+    const ledger = approved();
+    fail(ledger, 'TC-UI-01', 'clicking Export started no download');
+    for (const tc of ledger.testCases) if (tc.outOfScope === undefined && tc.id !== 'TC-UI-01') pass(ledger, [tc.id]);
+    assert.equal(status(ledger).status, 'FAIL');
+    assert.throws(() => acceptRisk(ledger, 'DEF-001', { by: 'owner', reason: 'r', now: NOW }), /not triaged/);
+    triageDefect(ledger, 'DEF-001', { severity: 'Low', owner: 'frontend-engineer', rootCause: 'no handler', by: 'triage', now: NOW });
+    assert.throws(() => acceptRisk(ledger, 'DEF-001', { by: 'e2e-engineer', reason: 'r', now: NOW }), /named person/);
+    assert.throws(() => acceptRisk(ledger, 'DEF-001', { by: 'owner', now: NOW }), /reason/);
+    acceptRisk(ledger, 'DEF-001', { by: 'release-owner', reason: 'Export is unused in this release', now: NOW });
+    const result = status(ledger);
+    assert.equal(result.status, 'PASS WITH ACCEPTED RISKS');
+    assert.deepEqual(result.reasons, ['DEF-001 (Low) accepted by release-owner: Export is unused in this release']);
+    assert.equal(ledger.defects[0].status, 'Triaged', 'an accepted defect stays open');
+  });
+
+  test('an accepted High defect no longer gives FAIL, but an unaccepted one does', async () => {
+    const { acceptRisk } = await import('../scripts/remediation.mjs');
+    const ledger = approved();
+    fail(ledger, 'TC-ORD-03');
+    fail(ledger, 'TC-APR-04', 'staff approved an order');
+    triageDefect(ledger, 'DEF-001', { severity: 'High', owner: 'backend-engineer', rootCause: 'no tenant check', by: 'triage', now: NOW });
+    acceptRisk(ledger, 'DEF-001', { by: 'release-owner', reason: 'tenant two is not live yet', now: NOW });
+    const result = status(ledger);
+    assert.equal(result.status, 'FAIL');
+    assert.deepEqual(result.reasons, ['TC-APR-04 failed']);
+  });
+});

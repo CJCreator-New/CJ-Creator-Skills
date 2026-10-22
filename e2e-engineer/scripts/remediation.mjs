@@ -247,6 +247,28 @@ export function renderHandoff(packet) {
   return lines.join('\n');
 }
 
+// A named decision to release with an open defect (G18). Only a person accepts a risk, and each accepted
+// defect needs its own decision with its reason. The defect stays open, its failures stay in the
+// report, and the gate reads PASS WITH ACCEPTED RISKS instead of PASS. A Critical defect cannot be
+// accepted until its second review is done.
+export function acceptRisk(ledger, id, { by, reason, now }) {
+  const defect = find(ledger, id);
+  if (!isOpen(defect)) throw new Error(`${id} is closed; there is no risk to accept`);
+  if (!text(by) || by === 'e2e-engineer') throw new Error('a risk is accepted by a named person, not by the skill');
+  if (!text(reason)) throw new Error('the reason for accepting the risk is required');
+  if (!SEVERITIES.includes(defect.severity)) throw new Error(`${id} is not triaged; triage it before accepting its risk`);
+  if (defect.secondReview?.status === 'pending') throw new Error(`${id} is Critical and its second review is pending`);
+  defect.acceptedRisk = { by, reason, at: now, build: currentBuild(ledger) };
+  defect.history = defect.history || [];
+  defect.history.push({ status: defect.status, at: now, by, note: `risk accepted: ${reason}` });
+  return defect;
+}
+
+// Whether the current failure of a test case is covered by an open defect whose risk was accepted.
+export function acceptedFailure(ledger, testCaseId) {
+  return (ledger.defects || []).some((d) => isOpen(d) && d.acceptedRisk && (d.testCases || []).includes(testCaseId));
+}
+
 // The owner says the fix is in. This does not close anything; the retest decides.
 export function claimFix(ledger, id, { by, note = '', now }) {
   const defect = find(ledger, id);
