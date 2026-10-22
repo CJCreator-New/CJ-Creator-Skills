@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // PreToolUse guard for Write, Edit, MultiEdit and Bash. It enforces three rules:
 //
-// 1. Read-only agents (design-analyst, repo-intel, visual-qa, code-reviewer) never write files,
+// 1. Read-only agents (design-analyst, repo-intel, visual-qa, code-reviewer, a11y-static-reviewer,
+//    a11y-runtime-auditor) never write files,
 //    with a tool or with a shell command, whether or not a run is active.
 // 2. While a run has an ownership file, subagents may not write through the shell. They must use
 //    Edit or Write, which this guard checks against the list.
@@ -25,7 +26,14 @@ import { pathToFileURL } from 'node:url';
 import { covers, relativePath } from '../scripts/ownership.mjs';
 
 export const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
-export const READ_ONLY_AGENTS = new Set(['design-analyst', 'repo-intel', 'visual-qa', 'code-reviewer']);
+export const READ_ONLY_AGENTS = new Set([
+  'design-analyst',
+  'repo-intel',
+  'visual-qa',
+  'code-reviewer',
+  'a11y-static-reviewer',
+  'a11y-runtime-auditor',
+]);
 const STATE_DIR = '.claude/frontend-engineer/';
 
 // Shell commands that write files. Redirections to /dev/null and fd duplication (2>&1) are allowed.

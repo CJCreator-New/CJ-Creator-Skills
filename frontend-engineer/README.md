@@ -58,13 +58,18 @@ frontend-engineer/
 │       ├── design-and-contracts.md           design spec, traceability matrix, contracts, ownership
 │       ├── testing-and-visual-qa.md          test layers, visual checklist, defect severity, correction loop
 │       └── gates-and-reporting.md            gates, completion states, telemetry, report format
+├── skills/accessibility-audit/
+│   ├── SKILL.md                              read-only WCAG 2.2 AA audit, stage order
+│   └── references/criteria.md                static checks mapped to WCAG, manual checks, severity, report
 ├── agents/
 │   ├── design-analyst.md    sonnet, read-only, reads the reference image
 │   ├── repo-intel.md        haiku, read-only, task-scoped repository index
 │   ├── implementer.md       sonnet, edits owned files, never runs tests
 │   ├── test-author.md       sonnet, writes tests, does not run the suite
 │   ├── visual-qa.md         sonnet, browser captures and comparison, read-only
-│   └── code-reviewer.md     opus, read-only independent review
+│   ├── code-reviewer.md     opus, read-only independent review
+│   ├── a11y-static-reviewer.md   sonnet, read-only, WCAG review of code and token contrast
+│   └── a11y-runtime-auditor.md   sonnet, read-only, axe, focus order and reflow on the rendered page
 ├── hooks/
 │   ├── hooks.json           PreToolUse on Write, Edit, MultiEdit and Bash
 │   └── guard-file-ownership.mjs
@@ -72,9 +77,11 @@ frontend-engineer/
 │   ├── gates.mjs            gate checks, recorded check runs, iteration limit, finish and abort
 │   ├── ownership.mjs        path rules shared by the guard and the gate checks
 │   ├── telemetry.mjs        stage timings, reported tokens, defects, iterations, summary
+│   ├── contrast.mjs         WCAG contrast ratio for two colours, with the normal, large and non-text thresholds
+│   ├── axe-scan.mjs         axe-core, focus order and 320px reflow on a URL, via the project's Playwright
 │   └── validate.mjs         structure checks for the plugin and its marketplace entry
 ├── examples/config.example.json
-└── test/                    guard, gates, telemetry and structure tests
+└── test/                    guard, gates, telemetry, accessibility and structure tests
 ```
 
 ## Quality gates
@@ -101,11 +108,23 @@ The plan gives each work package one owner per file. Shared files (routes, globa
 - **Subagents may not write through the shell during a run.** Redirects (`>`, `>>`), `tee`, `cp`, `mv`, `rm`, `sed -i`, `perl -i`, `git checkout`, `git restore` and similar are denied. `2>&1` and `>/dev/null` are allowed. They must use Edit or Write, which the guard checks against the list.
 - **Subagent writes outside the list are denied,** including writes to `.claude/frontend-engineer/`, which only the orchestrator writes.
 - **The orchestrator's writes outside the list are denied** during a run, except under `.claude/frontend-engineer/`.
-- **Read-only agents (`design-analyst`, `repo-intel`, `visual-qa`, `code-reviewer`) cannot write** with a tool or through the shell, whether or not a run is active. The validator also rejects a read-only agent that lists a write tool.
+- **Read-only agents (`design-analyst`, `repo-intel`, `visual-qa`, `code-reviewer`, `a11y-static-reviewer`, `a11y-runtime-auditor`) cannot write** with a tool or through the shell, whether or not a run is active. The validator also rejects a read-only agent that lists a write tool.
 
 The run ends with `gates.mjs finish`, which removes the ownership file only after gates 4 and 5 pass. `gates.mjs abort` removes it without checks.
 
 The hook cannot tell which of several implementers is writing, so the split between them inside the list is enforced by the plan.
+
+## Accessibility audit
+
+`/frontend-engineer:accessibility-audit <route, component path, or "all routes">` audits against WCAG 2.2 AA. It is read-only and does not run the build flow.
+
+- **Static review** (`a11y-static-reviewer`) reads the code: semantics, names and labels, keyboard handlers, focus handling, ARIA, headings, motion, and the contrast of the token pairs the code uses (`scripts/contrast.mjs`).
+- **Runtime check** (`a11y-runtime-auditor`) runs `scripts/axe-scan.mjs` on the running page at each viewport. It reports axe-core violations, the first Tab stops with their focus visibility, and horizontal overflow at 320 CSS px. It presses Tab only.
+- **Report** goes to `.claude/frontend-engineer/accessibility/report.md`, with each source's coverage, the manual checks still outstanding, and the criteria used.
+
+The runtime check needs Playwright and axe-core in the project (`npm i -D playwright axe-core`), a browser, and the app running at `devServer.url`. Without them the check is reported as `not performed` with the reason, and the audit never describes the page from code alone. Routes behind a login are not reached.
+
+Fixes are not made by the audit. Pass its report to `/frontend-engineer:frontend-build`.
 
 ## Telemetry
 
