@@ -38,7 +38,7 @@ class T(unittest.TestCase):
         for w in (50, 60, 80, 100, 120, 160, 200):
             for color in (False, True):
                 for compact in (False, True):
-                    lines = tui.render(st, w, tui.Theme(color, True), tick=3, toasts=[("P1-T1 cleared  +10 XP", tui.OK)], compact=compact)
+                    lines = tui.render(st, w, tui.Theme(color, True), tick=3, toasts=[("P1-T1 baton passed after 1:30  +10 XP", tui.OK)], compact=compact)
                     for l in lines:
                         self.assertLessEqual(tui.vlen(tui.clip(l, w)), w, (w, l))
                     # boxes must be rectangular: every line of a box has the same visible width
@@ -63,7 +63,10 @@ class T(unittest.TestCase):
     def test_toasts(self):
         a, b = make_state(), make_state()
         b["tickets"]["P1-T2"]["status"] = "done"
-        self.assertEqual([x[0] for x in tui.diff_toasts(a, b)][:1], ["P1-T2 cleared  +10 XP"])
+        # A finished leg reports how long it ran; with no recorded times the duration is unknown.
+        self.assertEqual([x[0] for x in tui.diff_toasts(a, b)][:1], ["P1-T2 baton passed after --:--  +10 XP"])
+        b["tickets"]["P1-T2"].update(started="2026-10-13T10:00:00+00:00", finished="2026-10-13T10:01:30+00:00")
+        self.assertEqual([x[0] for x in tui.diff_toasts(a, b)][:1], ["P1-T2 baton passed after 1:30  +10 XP"])
 
     def test_watch_in_pty(self):
         d = tempfile.mkdtemp(); os.makedirs(os.path.join(d, ".claude/forge"))
@@ -89,7 +92,7 @@ class T(unittest.TestCase):
         # live update: finish a ticket and watch the toast + new state appear
         st["tickets"]["P1-T2"]["status"] = "done"; F.save(d, st)
         mark = len(buf); pump(1.5)
-        self.assertIn(b"P1-T2 cleared", buf[mark:])
+        self.assertIn(b"P1-T2 baton passed", buf[mark:])
         os.write(fd, b"q"); pump(1.0)
         _, status = os.waitpid(pid, 0)
         self.assertEqual(os.WEXITSTATUS(status), 0)
