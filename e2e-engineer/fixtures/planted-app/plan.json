@@ -5,90 +5,252 @@
       "label": "Administrator",
       "tenant": "t1",
       "description": "Approves any order in its tenant, including orders over 1000.",
-      "account": { "usernameEnv": "E2E_ADMIN_USERNAME", "passwordEnv": "E2E_ADMIN_PASSWORD" }
+      "account": {
+        "usernameEnv": "E2E_ADMIN_USERNAME",
+        "passwordEnv": "E2E_ADMIN_PASSWORD"
+      }
     },
     {
       "id": "manager",
       "label": "Manager",
       "tenant": "t1",
       "description": "Approves orders up to 1000 in its tenant, not its own requests.",
-      "account": { "usernameEnv": "E2E_MANAGER_USERNAME", "passwordEnv": "E2E_MANAGER_PASSWORD" }
+      "account": {
+        "usernameEnv": "E2E_MANAGER_USERNAME",
+        "passwordEnv": "E2E_MANAGER_PASSWORD"
+      }
     },
     {
       "id": "staff",
       "label": "Staff",
       "tenant": "t1",
       "description": "Creates orders. Cannot approve.",
-      "account": { "usernameEnv": "E2E_STAFF_USERNAME", "passwordEnv": "E2E_STAFF_PASSWORD" }
+      "account": {
+        "usernameEnv": "E2E_STAFF_USERNAME",
+        "passwordEnv": "E2E_STAFF_PASSWORD"
+      }
     },
     {
       "id": "manager-other-tenant",
       "label": "Manager in tenant t2",
       "tenant": "t2",
       "description": "A manager in another tenant. Must not see or approve tenant t1 orders.",
-      "account": { "usernameEnv": "E2E_OUTSIDER_USERNAME", "passwordEnv": "E2E_OUTSIDER_PASSWORD" }
+      "account": {
+        "usernameEnv": "E2E_OUTSIDER_USERNAME",
+        "passwordEnv": "E2E_OUTSIDER_PASSWORD"
+      }
     }
   ],
   "requirements": [
-    { "id": "REQ-AUTH-001", "text": "Signing in with a valid username and password returns a session token; a wrong password returns 401.", "oracle": "contract", "source": "openapi.json /api/login" },
-    { "id": "REQ-AUTH-002", "text": "A request without a session token is refused with 401.", "oracle": "contract", "source": "openapi.json /api/orders" },
-    { "id": "REQ-ORD-001", "text": "An order needs a non-blank item and a total greater than zero. A violation returns 422 and names the field.", "oracle": "contract", "source": "openapi.json NewOrder and 422" },
-    { "id": "REQ-ORD-002", "text": "An order total is a JSON number.", "oracle": "contract", "source": "openapi.json Order.total" },
-    { "id": "REQ-ORD-003", "text": "A user reads and approves only orders in its own tenant. Another tenant's order returns 404.", "oracle": "contract", "source": "openapi.json GET /api/orders/{id}" },
-    { "id": "REQ-APR-001", "text": "A manager approves a pending order up to 1000 in its own tenant, but not its own request.", "oracle": "contract", "source": "openapi.json approve description" },
-    { "id": "REQ-APR-002", "text": "An order over 1000 is approved only by an admin.", "oracle": "contract", "source": "openapi.json approve description" },
-    { "id": "REQ-APR-003", "text": "An order is approved once. A second approval returns 409.", "oracle": "contract", "source": "openapi.json approve 409" },
-    { "id": "REQ-APR-004", "text": "A staff member cannot approve an order.", "oracle": "spec", "source": "derived from the role descriptions in openapi.json; not stated as a rule", "derived": true, "confirmed": false },
-    { "id": "REQ-UI-001", "text": "Export downloads the orders the user can see, as JSON.", "oracle": "observed", "source": "the export control in the planted app; no spec", "derived": true, "confirmed": false },
-    { "id": "REQ-UI-002", "text": "A failed approval is reported to the user as an error, and the approve control stays available.", "oracle": "doc", "source": "WCAG 2.2 3.3.1 Error Identification" },
-    { "id": "REQ-UI-003", "text": "Every form field has a visible label that names it.", "oracle": "doc", "source": "WCAG 2.2 1.3.1 Info and Relationships and 3.3.2 Labels or Instructions" },
-    { "id": "REQ-UI-004", "text": "Touch targets are at least 44 by 44 CSS pixels at phone widths.", "oracle": "doc", "source": "WCAG 2.2 2.5.5 Target Size (Enhanced); the team has not chosen this level", "derived": true, "confirmed": false },
-    { "id": "REQ-UI-005", "text": "The order table reflows at 320 CSS pixels with no clipped column.", "oracle": "doc", "source": "WCAG 2.2 1.4.10 Reflow" },
-    { "id": "REQ-SEC-001", "text": "A release build is not debuggable, allows no cleartext traffic, and declares no secret in its resources.", "oracle": "doc", "source": "OWASP MASVS MSTG-RESILIENCE and MSTG-STORAGE checks for Android" }
+    {
+      "id": "REQ-AUTH-001",
+      "text": "Signing in with a valid username and password returns a session token; a wrong password returns 401.",
+      "oracle": "contract",
+      "source": "openapi.json /api/login"
+    },
+    {
+      "id": "REQ-AUTH-002",
+      "text": "A request without a session token is refused with 401.",
+      "oracle": "contract",
+      "source": "openapi.json /api/orders"
+    },
+    {
+      "id": "REQ-ORD-001",
+      "text": "An order needs a non-blank item and a total greater than zero. A violation returns 422 and names the field.",
+      "oracle": "contract",
+      "source": "openapi.json NewOrder and 422"
+    },
+    {
+      "id": "REQ-ORD-002",
+      "text": "An order total is a JSON number.",
+      "oracle": "contract",
+      "source": "openapi.json Order.total"
+    },
+    {
+      "id": "REQ-ORD-003",
+      "text": "A user reads and approves only orders in its own tenant. Another tenant's order returns 404.",
+      "oracle": "contract",
+      "source": "openapi.json GET /api/orders/{id}"
+    },
+    {
+      "id": "REQ-APR-001",
+      "text": "A manager approves a pending order up to 1000 in its own tenant, but not its own request.",
+      "oracle": "contract",
+      "source": "openapi.json approve description"
+    },
+    {
+      "id": "REQ-APR-002",
+      "text": "An order over 1000 is approved only by an admin.",
+      "oracle": "contract",
+      "source": "openapi.json approve description"
+    },
+    {
+      "id": "REQ-APR-003",
+      "text": "An order is approved once. A second approval returns 409.",
+      "oracle": "contract",
+      "source": "openapi.json approve 409"
+    },
+    {
+      "id": "REQ-APR-004",
+      "text": "A staff member cannot approve an order.",
+      "oracle": "contract",
+      "source": "openapi.json approve description: managers approve up to 1000 and admins approve over 1000, so staff are not approvers"
+    },
+    {
+      "id": "REQ-UI-001",
+      "text": "Export downloads the orders the user can see, as JSON.",
+      "oracle": "observed",
+      "source": "the export control in the planted app; no spec",
+      "derived": true,
+      "confirmed": false
+    },
+    {
+      "id": "REQ-UI-002",
+      "text": "A failed approval is reported to the user as an error, and the approve control stays available.",
+      "oracle": "doc",
+      "source": "WCAG 2.2 3.3.1 Error Identification"
+    },
+    {
+      "id": "REQ-UI-003",
+      "text": "Every form field has a visible label that names it.",
+      "oracle": "doc",
+      "source": "WCAG 2.2 1.3.1 Info and Relationships and 3.3.2 Labels or Instructions"
+    },
+    {
+      "id": "REQ-UI-004",
+      "text": "Touch targets are at least 44 by 44 CSS pixels at phone widths.",
+      "oracle": "doc",
+      "source": "WCAG 2.2 2.5.5 Target Size (Enhanced); the team has not chosen this level",
+      "derived": true,
+      "confirmed": false
+    },
+    {
+      "id": "REQ-UI-005",
+      "text": "The order table reflows at 320 CSS pixels with no clipped column.",
+      "oracle": "doc",
+      "source": "WCAG 2.2 1.4.10 Reflow"
+    },
+    {
+      "id": "REQ-SEC-001",
+      "text": "A release build is not debuggable, allows no cleartext traffic, and declares no secret in its resources.",
+      "oracle": "doc",
+      "source": "OWASP MASVS MSTG-RESILIENCE and MSTG-STORAGE checks for Android"
+    }
   ],
   "permissions": [
     {
       "id": "PERM-READ",
       "action": "read an order",
-      "requirements": ["REQ-ORD-003"],
+      "requirements": [
+        "REQ-ORD-003"
+      ],
       "rules": [
-        { "role": "admin", "outcome": "conditional", "condition": "order in own tenant" },
-        { "role": "manager", "outcome": "conditional", "condition": "order in own tenant" },
-        { "role": "staff", "outcome": "conditional", "condition": "order in own tenant" },
-        { "role": "manager-other-tenant", "outcome": "conditional", "condition": "order in own tenant" }
+        {
+          "role": "admin",
+          "outcome": "conditional",
+          "condition": "order in own tenant"
+        },
+        {
+          "role": "manager",
+          "outcome": "conditional",
+          "condition": "order in own tenant"
+        },
+        {
+          "role": "staff",
+          "outcome": "conditional",
+          "condition": "order in own tenant"
+        },
+        {
+          "role": "manager-other-tenant",
+          "outcome": "conditional",
+          "condition": "order in own tenant"
+        }
       ],
       "noDeniedReason": "the denial is the tenant condition, tested for each tenant in TC-ORD-03"
     },
     {
       "id": "PERM-CREATE",
       "action": "create an order",
-      "requirements": ["REQ-ORD-001"],
+      "requirements": [
+        "REQ-ORD-001"
+      ],
       "rules": [
-        { "role": "admin", "outcome": "allowed" },
-        { "role": "manager", "outcome": "allowed" },
-        { "role": "staff", "outcome": "allowed" },
-        { "role": "manager-other-tenant", "outcome": "allowed" }
+        {
+          "role": "admin",
+          "outcome": "allowed"
+        },
+        {
+          "role": "manager",
+          "outcome": "allowed"
+        },
+        {
+          "role": "staff",
+          "outcome": "allowed"
+        },
+        {
+          "role": "manager-other-tenant",
+          "outcome": "allowed"
+        }
       ],
       "noDeniedReason": "every role may create orders in its own tenant"
     },
     {
       "id": "PERM-APPROVE",
       "action": "approve an order",
-      "requirements": ["REQ-APR-001", "REQ-APR-002", "REQ-APR-004"],
+      "requirements": [
+        "REQ-APR-001",
+        "REQ-APR-002",
+        "REQ-APR-004"
+      ],
       "rules": [
-        { "role": "admin", "outcome": "conditional", "condition": "same tenant, not own request" },
-        { "role": "manager", "outcome": "conditional", "condition": "same tenant, not own request, total up to 1000" },
-        { "role": "staff", "outcome": "denied" },
-        { "role": "manager-other-tenant", "outcome": "conditional", "condition": "same tenant" }
+        {
+          "role": "admin",
+          "outcome": "conditional",
+          "condition": "same tenant, not own request"
+        },
+        {
+          "role": "manager",
+          "outcome": "conditional",
+          "condition": "same tenant, not own request, total up to 1000"
+        },
+        {
+          "role": "staff",
+          "outcome": "denied"
+        },
+        {
+          "role": "manager-other-tenant",
+          "outcome": "conditional",
+          "condition": "same tenant"
+        }
       ]
     }
   ],
   "operations": [
-    { "id": "OP-LOGIN", "method": "POST", "path": "/api/login" },
-    { "id": "OP-LIST", "method": "GET", "path": "/api/orders" },
-    { "id": "OP-CREATE", "method": "POST", "path": "/api/orders" },
-    { "id": "OP-GET", "method": "GET", "path": "/api/orders/{id}" },
-    { "id": "OP-APPROVE", "method": "POST", "path": "/api/orders/{id}/approve" }
+    {
+      "id": "OP-LOGIN",
+      "method": "POST",
+      "path": "/api/login"
+    },
+    {
+      "id": "OP-LIST",
+      "method": "GET",
+      "path": "/api/orders"
+    },
+    {
+      "id": "OP-CREATE",
+      "method": "POST",
+      "path": "/api/orders"
+    },
+    {
+      "id": "OP-GET",
+      "method": "GET",
+      "path": "/api/orders/{id}"
+    },
+    {
+      "id": "OP-APPROVE",
+      "method": "POST",
+      "path": "/api/orders/{id}/approve"
+    }
   ],
   "screens": [
     {
@@ -96,35 +258,91 @@
       "route": "#/login",
       "title": "Sign in",
       "controls": [
-        { "id": "username", "label": "Username", "kind": "input" },
-        { "id": "password", "label": "Password", "kind": "input" },
-        { "id": "sign-in", "label": "Sign in", "kind": "button" }
+        {
+          "id": "username",
+          "label": "Username",
+          "kind": "input"
+        },
+        {
+          "id": "password",
+          "label": "Password",
+          "kind": "input"
+        },
+        {
+          "id": "sign-in",
+          "label": "Sign in",
+          "kind": "button"
+        }
       ],
-      "states": ["signed out", "wrong password error"]
+      "states": [
+        "signed out",
+        "wrong password error"
+      ]
     },
     {
       "id": "SCR-ORDERS",
       "route": "#/orders",
       "title": "Orders",
       "controls": [
-        { "id": "export", "label": "Export", "kind": "button" },
-        { "id": "order-link", "label": "Order ID", "kind": "link" },
-        { "id": "item-field", "label": "Item", "kind": "input" },
-        { "id": "total-field", "label": "Total", "kind": "input" },
-        { "id": "create", "label": "Create", "kind": "button" },
-        { "id": "sign-out", "label": "Sign out", "kind": "link" }
+        {
+          "id": "export",
+          "label": "Export",
+          "kind": "button"
+        },
+        {
+          "id": "order-link",
+          "label": "Order ID",
+          "kind": "link"
+        },
+        {
+          "id": "item-field",
+          "label": "Item",
+          "kind": "input"
+        },
+        {
+          "id": "total-field",
+          "label": "Total",
+          "kind": "input"
+        },
+        {
+          "id": "create",
+          "label": "Create",
+          "kind": "button"
+        },
+        {
+          "id": "sign-out",
+          "label": "Sign out",
+          "kind": "link"
+        }
       ],
-      "states": ["loading", "orders listed", "create error"]
+      "states": [
+        "loading",
+        "orders listed",
+        "create error"
+      ]
     },
     {
       "id": "SCR-ORDER-DETAIL",
       "route": "#/orders/:id",
       "title": "Order detail",
       "controls": [
-        { "id": "approve", "label": "Approve", "kind": "button" },
-        { "id": "back", "label": "Back to orders", "kind": "link" }
+        {
+          "id": "approve",
+          "label": "Approve",
+          "kind": "button"
+        },
+        {
+          "id": "back",
+          "label": "Back to orders",
+          "kind": "link"
+        }
       ],
-      "states": ["pending", "approved", "not found", "approval error"]
+      "states": [
+        "pending",
+        "approved",
+        "not found",
+        "approval error"
+      ]
     }
   ],
   "journeys": [
@@ -132,223 +350,1097 @@
       "id": "J-01",
       "title": "Sign in and see orders",
       "priority": "P0",
-      "roles": ["admin", "manager", "staff", "manager-other-tenant"],
-      "screens": ["SCR-LOGIN", "SCR-ORDERS"],
-      "requirements": ["REQ-AUTH-001", "REQ-AUTH-002"],
-      "operations": ["OP-LOGIN", "OP-LIST"],
+      "roles": [
+        "admin",
+        "manager",
+        "staff",
+        "manager-other-tenant"
+      ],
+      "screens": [
+        "SCR-LOGIN",
+        "SCR-ORDERS"
+      ],
+      "requirements": [
+        "REQ-AUTH-001",
+        "REQ-AUTH-002"
+      ],
+      "operations": [
+        "OP-LOGIN",
+        "OP-LIST"
+      ],
       "branches": [
-        { "kind": "success", "summary": "valid credentials open the orders page" },
-        { "kind": "failure", "summary": "a wrong password shows an error and no session is created" },
-        { "kind": "recovery", "summary": "after an error the user can sign in again" }
+        {
+          "kind": "success",
+          "summary": "valid credentials open the orders page"
+        },
+        {
+          "kind": "failure",
+          "summary": "a wrong password shows an error and no session is created"
+        },
+        {
+          "kind": "recovery",
+          "summary": "after an error the user can sign in again"
+        }
       ]
     },
     {
       "id": "J-02",
       "title": "Create an order",
       "priority": "P0",
-      "roles": ["admin", "manager", "staff"],
-      "screens": ["SCR-ORDERS"],
-      "requirements": ["REQ-ORD-001", "REQ-ORD-002"],
-      "operations": ["OP-CREATE", "OP-GET"],
-      "permissions": ["PERM-CREATE"],
+      "roles": [
+        "admin",
+        "manager",
+        "staff"
+      ],
+      "screens": [
+        "SCR-ORDERS"
+      ],
+      "requirements": [
+        "REQ-ORD-001",
+        "REQ-ORD-002"
+      ],
+      "operations": [
+        "OP-CREATE",
+        "OP-GET"
+      ],
+      "permissions": [
+        "PERM-CREATE"
+      ],
       "branches": [
-        { "kind": "success", "summary": "a valid order is created and appears in the list" },
-        { "kind": "failure", "summary": "a blank item or a total of zero or less is rejected with the field named" },
-        { "kind": "permission", "summary": "a request without a session is refused" }
+        {
+          "kind": "success",
+          "summary": "a valid order is created and appears in the list"
+        },
+        {
+          "kind": "failure",
+          "summary": "a blank item or a total of zero or less is rejected with the field named"
+        },
+        {
+          "kind": "permission",
+          "summary": "a request without a session is refused"
+        }
       ]
     },
     {
       "id": "J-03",
       "title": "Approve an order",
       "priority": "P0",
-      "roles": ["admin", "manager", "staff", "manager-other-tenant"],
-      "screens": ["SCR-ORDERS", "SCR-ORDER-DETAIL"],
-      "requirements": ["REQ-APR-001", "REQ-APR-002", "REQ-APR-003", "REQ-APR-004"],
-      "operations": ["OP-APPROVE", "OP-GET"],
-      "permissions": ["PERM-APPROVE"],
+      "roles": [
+        "admin",
+        "manager",
+        "staff",
+        "manager-other-tenant"
+      ],
+      "screens": [
+        "SCR-ORDERS",
+        "SCR-ORDER-DETAIL"
+      ],
+      "requirements": [
+        "REQ-APR-001",
+        "REQ-APR-002",
+        "REQ-APR-003",
+        "REQ-APR-004"
+      ],
+      "operations": [
+        "OP-APPROVE",
+        "OP-GET"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
       "branches": [
-        { "kind": "success", "summary": "a manager approves an eligible pending order, and the status becomes approved" },
-        { "kind": "failure", "summary": "a second approval is a conflict, and an order over 1000 is refused for a manager" },
-        { "kind": "permission", "summary": "a staff member, or a manager on its own request, is refused" }
+        {
+          "kind": "success",
+          "summary": "a manager approves an eligible pending order, and the status becomes approved"
+        },
+        {
+          "kind": "failure",
+          "summary": "a second approval is a conflict, and an order over 1000 is refused for a manager"
+        },
+        {
+          "kind": "permission",
+          "summary": "a staff member, or a manager on its own request, is refused"
+        }
       ]
     },
     {
       "id": "J-04",
       "title": "Read an order in another tenant",
       "priority": "P0",
-      "roles": ["manager", "manager-other-tenant"],
-      "screens": ["SCR-ORDER-DETAIL"],
-      "requirements": ["REQ-ORD-003"],
-      "operations": ["OP-GET"],
-      "permissions": ["PERM-READ"],
+      "roles": [
+        "manager",
+        "manager-other-tenant"
+      ],
+      "screens": [
+        "SCR-ORDER-DETAIL"
+      ],
+      "requirements": [
+        "REQ-ORD-003"
+      ],
+      "operations": [
+        "OP-GET"
+      ],
+      "permissions": [
+        "PERM-READ"
+      ],
       "branches": [
-        { "kind": "success", "summary": "an order in the caller's tenant opens" },
-        { "kind": "failure", "summary": "an order in another tenant returns not found" },
-        { "kind": "permission", "summary": "a manager in another tenant cannot read tenant t1 orders" }
+        {
+          "kind": "success",
+          "summary": "an order in the caller's tenant opens"
+        },
+        {
+          "kind": "failure",
+          "summary": "an order in another tenant returns not found"
+        },
+        {
+          "kind": "permission",
+          "summary": "a manager in another tenant cannot read tenant t1 orders"
+        }
       ]
     },
     {
       "id": "J-05",
       "title": "A failed approval is reported",
       "priority": "P1",
-      "roles": ["manager"],
-      "screens": ["SCR-ORDER-DETAIL"],
-      "requirements": ["REQ-UI-002"],
-      "operations": ["OP-APPROVE"],
+      "roles": [
+        "manager"
+      ],
+      "screens": [
+        "SCR-ORDER-DETAIL"
+      ],
+      "requirements": [
+        "REQ-UI-002"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
       "branches": [
-        { "kind": "success", "summary": "a successful approval shows the new status" },
-        { "kind": "failure", "summary": "a failed approval shows an error and keeps the control" },
-        { "kind": "recovery", "summary": "the manager can retry the approval after the error" }
+        {
+          "kind": "success",
+          "summary": "a successful approval shows the new status"
+        },
+        {
+          "kind": "failure",
+          "summary": "a failed approval shows an error and keeps the control"
+        },
+        {
+          "kind": "recovery",
+          "summary": "the manager can retry the approval after the error"
+        }
       ]
     },
     {
       "id": "J-06",
       "title": "Export the visible orders",
       "priority": "P2",
-      "roles": ["admin", "manager", "staff"],
-      "screens": ["SCR-ORDERS"],
-      "requirements": ["REQ-UI-001"],
-      "operations": ["OP-LIST"],
-      "branches": [{ "kind": "success", "summary": "the export downloads the orders the user can see" }]
+      "roles": [
+        "admin",
+        "manager",
+        "staff"
+      ],
+      "screens": [
+        "SCR-ORDERS"
+      ],
+      "requirements": [
+        "REQ-UI-001"
+      ],
+      "operations": [
+        "OP-LIST"
+      ],
+      "branches": [
+        {
+          "kind": "success",
+          "summary": "the export downloads the orders the user can see"
+        }
+      ]
     },
     {
       "id": "J-07",
       "title": "Use the orders on a phone",
       "priority": "P1",
-      "roles": ["manager"],
-      "screens": ["SCR-ORDERS", "SCR-ORDER-DETAIL"],
-      "requirements": ["REQ-UI-004", "REQ-UI-005"],
-      "branches": [{ "kind": "success", "summary": "the table and the approve control work at phone widths" }]
+      "roles": [
+        "manager"
+      ],
+      "screens": [
+        "SCR-ORDERS",
+        "SCR-ORDER-DETAIL"
+      ],
+      "requirements": [
+        "REQ-UI-004",
+        "REQ-UI-005"
+      ],
+      "branches": [
+        {
+          "kind": "success",
+          "summary": "the table and the approve control work at phone widths"
+        }
+      ]
     },
     {
       "id": "J-08",
       "title": "Create an order with labelled fields",
       "priority": "P1",
-      "roles": ["staff"],
-      "screens": ["SCR-ORDERS"],
-      "requirements": ["REQ-UI-003"],
+      "roles": [
+        "staff"
+      ],
+      "screens": [
+        "SCR-ORDERS"
+      ],
+      "requirements": [
+        "REQ-UI-003"
+      ],
       "branches": [
-        { "kind": "success", "summary": "every field is announced with its label" },
-        { "kind": "failure", "summary": "an invalid field is described to the user" }
+        {
+          "kind": "success",
+          "summary": "every field is announced with its label"
+        },
+        {
+          "kind": "failure",
+          "summary": "an invalid field is described to the user"
+        }
       ]
     },
     {
       "id": "J-09",
       "title": "The release build is safe",
       "priority": "P1",
-      "roles": ["admin"],
+      "roles": [
+        "admin"
+      ],
       "screens": [],
-      "requirements": ["REQ-SEC-001"],
+      "requirements": [
+        "REQ-SEC-001"
+      ],
       "branches": [
-        { "kind": "success", "summary": "the release manifest is not debuggable and allows no cleartext" },
-        { "kind": "failure", "summary": "a debuggable manifest or a hardcoded key is reported" }
+        {
+          "kind": "success",
+          "summary": "the release manifest is not debuggable and allows no cleartext"
+        },
+        {
+          "kind": "failure",
+          "summary": "a debuggable manifest or a hardcoded key is reported"
+        }
       ]
     }
   ],
   "fixtures": [
-    { "id": "FX-ORDERS-SEED", "description": "Four orders: o-1 (staff, 500, t1), o-2 (staff, 5000, t1), o-3 (outsider, 100, t2), o-4 (manager, 300, t1). All pending. Reset by restarting the fixture server." },
-    { "id": "FX-ACCOUNTS", "description": "One account for each role, with credentials taken from the environment variables named on the role." }
+    {
+      "id": "FX-ORDERS-SEED",
+      "description": "Four orders: o-1 (staff, 500, t1), o-2 (staff, 5000, t1), o-3 (outsider, 100, t2), o-4 (manager, 300, t1). All pending. Reset by restarting the fixture server."
+    },
+    {
+      "id": "FX-ACCOUNTS",
+      "description": "One account for each role, with credentials taken from the environment variables named on the role."
+    }
   ],
   "testCases": [
     {
-      "id": "TC-AUTH-01", "title": "Sign-in returns a token for valid credentials", "layer": "api", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-AUTH-001"], "journeys": ["J-01"], "roles": ["manager", "staff"], "operations": ["OP-LOGIN"], "fixtures": ["FX-ACCOUNTS"],
-      "expected": ["200 with a token and the user for valid credentials", "401 for a wrong password"], "automation": "planned"
+      "id": "TC-AUTH-01",
+      "title": "Sign-in returns a token for valid credentials",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-AUTH-001"
+      ],
+      "journeys": [
+        "J-01"
+      ],
+      "roles": [
+        "manager",
+        "staff"
+      ],
+      "operations": [
+        "OP-LOGIN"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "200 with a token and the user for valid credentials",
+        "401 for a wrong password"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "request": {
+            "method": "POST",
+            "path": "/api/login",
+            "body": {
+              "username": "$env:E2E_MANAGER_USERNAME",
+              "password": "$env:E2E_MANAGER_PASSWORD"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "json": [
+              {
+                "path": "token",
+                "type": "string"
+              },
+              {
+                "path": "user.role",
+                "equals": "manager"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "http",
+          "request": {
+            "method": "POST",
+            "path": "/api/login",
+            "body": {
+              "username": "$env:E2E_MANAGER_USERNAME",
+              "password": "definitely-wrong"
+            }
+          },
+          "expect": {
+            "status": 401
+          }
+        }
+      ]
     },
     {
-      "id": "TC-AUTH-02", "title": "Requests without a token are refused", "layer": "api", "mutates": false, "oracle": "contract",
-      "requirements": ["REQ-AUTH-002"], "journeys": ["J-01"], "roles": ["manager"], "operations": ["OP-LIST"],
-      "expected": ["401 for a request without a token"], "automation": "planned"
+      "id": "TC-AUTH-02",
+      "title": "Requests without a token are refused",
+      "layer": "api",
+      "mutates": false,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-AUTH-002"
+      ],
+      "journeys": [
+        "J-01"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-LIST"
+      ],
+      "expected": [
+        "401 for a request without a token"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders"
+          },
+          "expect": {
+            "status": 401
+          }
+        }
+      ]
     },
     {
-      "id": "TC-UI-06", "title": "Sign-in form shows a wrong-password error and opens the orders page", "layer": "web", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-AUTH-001"], "journeys": ["J-01"], "roles": ["manager"],
-      "controls": ["SCR-LOGIN.username", "SCR-LOGIN.password", "SCR-LOGIN.sign-in"], "fixtures": ["FX-ACCOUNTS"],
-      "expected": ["a wrong password shows an error", "a valid sign-in opens the orders page"], "automation": "planned"
+      "id": "TC-UI-06",
+      "title": "Sign-in form shows a wrong-password error and opens the orders page",
+      "layer": "web",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-AUTH-001"
+      ],
+      "journeys": [
+        "J-01"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "controls": [
+        "SCR-LOGIN.username",
+        "SCR-LOGIN.password",
+        "SCR-LOGIN.sign-in"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "a wrong password shows an error",
+        "a valid sign-in opens the orders page"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-ORD-01", "title": "Order creation validates the item and the total", "layer": "api", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-ORD-001"], "journeys": ["J-02"], "roles": ["staff"], "operations": ["OP-CREATE"], "permissions": ["PERM-CREATE"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["422 naming item for a blank item", "422 naming total for a total of zero or less", "201 for a valid order"], "automation": "planned"
+      "id": "TC-ORD-01",
+      "title": "Order creation validates the item and the total",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-ORD-001"
+      ],
+      "journeys": [
+        "J-02"
+      ],
+      "roles": [
+        "staff"
+      ],
+      "operations": [
+        "OP-CREATE"
+      ],
+      "permissions": [
+        "PERM-CREATE"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "422 naming item for a blank item",
+        "422 naming total for a total of zero or less",
+        "201 for a valid order"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "staff",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders",
+            "body": {
+              "item": "",
+              "total": 5
+            }
+          },
+          "expect": {
+            "status": 422,
+            "json": [
+              {
+                "path": "error.field",
+                "equals": "item"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "http",
+          "as": "staff",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders",
+            "body": {
+              "item": "Pen",
+              "total": -5
+            }
+          },
+          "expect": {
+            "status": 422,
+            "json": [
+              {
+                "path": "error.field",
+                "equals": "total"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "http",
+          "as": "staff",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders",
+            "body": {
+              "item": "Pen",
+              "total": 5
+            }
+          },
+          "expect": {
+            "status": 201,
+            "json": [
+              {
+                "path": "total",
+                "equals": 5
+              }
+            ]
+          }
+        }
+      ]
     },
     {
-      "id": "TC-ORD-02", "title": "Order total is a number", "layer": "api", "mutates": false, "oracle": "contract",
-      "requirements": ["REQ-ORD-002"], "journeys": ["J-02"], "roles": ["staff"], "operations": ["OP-GET"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["the total in the order detail is a JSON number"], "automation": "planned"
+      "id": "TC-ORD-02",
+      "title": "Order total is a number",
+      "layer": "api",
+      "mutates": false,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-ORD-002"
+      ],
+      "journeys": [
+        "J-02"
+      ],
+      "roles": [
+        "staff"
+      ],
+      "operations": [
+        "OP-GET"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "the total in the order detail is a JSON number"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "staff",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders/o-1"
+          },
+          "expect": {
+            "status": 200,
+            "json": [
+              {
+                "path": "order.total",
+                "type": "number"
+              },
+              {
+                "path": "order.total",
+                "equals": 500
+              }
+            ]
+          }
+        }
+      ]
     },
     {
-      "id": "TC-ORD-03", "title": "Another tenant's order is not readable", "layer": "api", "mutates": false, "oracle": "contract",
-      "requirements": ["REQ-ORD-003"], "journeys": ["J-04"], "roles": ["manager", "manager-other-tenant"], "operations": ["OP-GET"], "permissions": ["PERM-READ"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["404 for an order in another tenant", "200 for an order in the caller's tenant"], "automation": "planned"
+      "id": "TC-ORD-03",
+      "title": "Another tenant's order is not readable",
+      "layer": "api",
+      "mutates": false,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-ORD-003"
+      ],
+      "journeys": [
+        "J-04"
+      ],
+      "roles": [
+        "manager",
+        "manager-other-tenant"
+      ],
+      "operations": [
+        "OP-GET"
+      ],
+      "permissions": [
+        "PERM-READ"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "404 for an order in another tenant",
+        "200 for an order in the caller's tenant"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "manager",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders/o-3"
+          },
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "kind": "http",
+          "as": "manager-other-tenant",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders/o-1"
+          },
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "kind": "http",
+          "as": "manager",
+          "request": {
+            "method": "GET",
+            "path": "/api/orders/o-1"
+          },
+          "expect": {
+            "status": 200,
+            "json": [
+              {
+                "path": "order.id",
+                "equals": "o-1"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
-      "id": "TC-APR-01", "title": "A manager approves an eligible order and not its own", "layer": "api", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-APR-001"], "journeys": ["J-03"], "roles": ["manager"], "operations": ["OP-APPROVE"], "permissions": ["PERM-APPROVE"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["200 when a manager approves o-1 (500, owned by staff)", "403 when a manager approves o-4 (its own request)"], "automation": "planned"
+      "id": "TC-APR-01",
+      "title": "A manager approves an eligible order and not its own",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-APR-001"
+      ],
+      "journeys": [
+        "J-03"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "200 when a manager approves o-1 (500, owned by staff)",
+        "403 when a manager approves o-4 (its own request)"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "manager",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-1/approve"
+          },
+          "expect": {
+            "status": 200,
+            "json": [
+              {
+                "path": "status",
+                "equals": "approved"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "http",
+          "as": "manager",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-4/approve"
+          },
+          "expect": {
+            "status": 403
+          }
+        }
+      ]
     },
     {
-      "id": "TC-APR-02", "title": "Orders over 1000 need an admin", "layer": "api", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-APR-002"], "journeys": ["J-03"], "roles": ["manager", "admin"], "operations": ["OP-APPROVE"], "permissions": ["PERM-APPROVE"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["403 when a manager approves o-2 (5000)", "200 when an admin approves o-2"], "automation": "planned"
+      "id": "TC-APR-02",
+      "title": "Orders over 1000 need an admin",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-APR-002"
+      ],
+      "journeys": [
+        "J-03"
+      ],
+      "roles": [
+        "manager",
+        "admin"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "403 when a manager approves o-2 (5000)",
+        "200 when an admin approves o-2"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "manager",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-2/approve"
+          },
+          "expect": {
+            "status": 403
+          }
+        },
+        {
+          "kind": "http",
+          "as": "admin",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-2/approve"
+          },
+          "expect": {
+            "status": 200,
+            "json": [
+              {
+                "path": "status",
+                "equals": "approved"
+              }
+            ]
+          }
+        }
+      ]
     },
     {
-      "id": "TC-APR-03", "title": "Concurrent approvals of one order: one succeeds", "layer": "api", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-APR-003"], "journeys": ["J-03"], "roles": ["manager"], "operations": ["OP-APPROVE"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["two concurrent approvals of one order give one 200 and one 409", "the approval count is 1 afterwards"], "automation": "planned"
+      "id": "TC-APR-03",
+      "title": "Concurrent approvals of one order: one succeeds",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-APR-003"
+      ],
+      "journeys": [
+        "J-03"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "two concurrent approvals of one order give one 200 and one 409",
+        "the approval count is 1 afterwards"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "concurrent",
+          "as": "manager",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-1/approve"
+          },
+          "count": 2,
+          "expectStatuses": [
+            200,
+            409
+          ],
+          "then": {
+            "as": "manager",
+            "request": {
+              "method": "GET",
+              "path": "/api/orders/o-1"
+            },
+            "expect": {
+              "status": 200,
+              "json": [
+                {
+                  "path": "order.approvals",
+                  "equals": 1
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     {
-      "id": "TC-APR-04", "title": "A staff member cannot approve", "layer": "api", "mutates": true, "oracle": "spec",
-      "requirements": ["REQ-APR-004"], "journeys": ["J-03"], "roles": ["staff"], "operations": ["OP-APPROVE"], "permissions": ["PERM-APPROVE"], "fixtures": ["FX-ORDERS-SEED", "FX-ACCOUNTS"],
-      "expected": ["403 when a staff member approves an order"], "automation": "planned"
+      "id": "TC-APR-04",
+      "title": "A staff member cannot approve",
+      "layer": "api",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-APR-004"
+      ],
+      "journeys": [
+        "J-03"
+      ],
+      "roles": [
+        "staff"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED",
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "403 when a staff member approves o-4 (a manager order that is pending)"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "staff",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-4/approve"
+          },
+          "expect": {
+            "status": 403
+          }
+        }
+      ]
     },
     {
-      "id": "TC-DB-01", "title": "The approval is stored", "layer": "db", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-APR-003"], "journeys": ["J-03"], "roles": ["manager"], "operations": ["OP-APPROVE"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["the stored status is approved and the approval count is 1 after one approval"], "automation": "planned"
+      "id": "TC-DB-01",
+      "title": "The approval is stored",
+      "layer": "db",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-APR-003"
+      ],
+      "journeys": [
+        "J-03"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "the stored status is approved and the approval count is 1 after one approval"
+      ],
+      "automation": "implemented",
+      "checks": [
+        {
+          "kind": "http",
+          "as": "manager",
+          "request": {
+            "method": "POST",
+            "path": "/api/orders/o-1/approve"
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "kind": "db",
+          "query": "SELECT status, approvals FROM orders WHERE id = 'o-1'",
+          "expectRows": [
+            {
+              "status": "approved",
+              "approvals": 1
+            }
+          ]
+        }
+      ]
     },
     {
-      "id": "TC-UI-01", "title": "Export downloads the visible orders", "layer": "web", "mutates": false, "oracle": "observed",
-      "requirements": ["REQ-UI-001"], "journeys": ["J-06"], "roles": ["manager"], "operations": ["OP-LIST"], "controls": ["SCR-ORDERS.export"],
-      "expected": ["the export downloads orders.json with the visible orders"], "automation": "planned"
+      "id": "TC-UI-01",
+      "title": "Export downloads the visible orders",
+      "layer": "web",
+      "mutates": false,
+      "oracle": "observed",
+      "requirements": [
+        "REQ-UI-001"
+      ],
+      "journeys": [
+        "J-06"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-LIST"
+      ],
+      "controls": [
+        "SCR-ORDERS.export"
+      ],
+      "expected": [
+        "the export downloads orders.json with the visible orders"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-UI-02", "title": "A failed approval shows an error and keeps the control", "layer": "web", "mutates": true, "oracle": "doc",
-      "requirements": ["REQ-UI-002"], "journeys": ["J-05"], "roles": ["manager"], "operations": ["OP-APPROVE"], "controls": ["SCR-ORDER-DETAIL.approve"], "fixtures": ["FX-ORDERS-SEED"],
-      "expected": ["a failed approval shows an error message", "the approve control stays available after a failure"], "automation": "planned"
+      "id": "TC-UI-02",
+      "title": "A failed approval shows an error and keeps the control",
+      "layer": "web",
+      "mutates": true,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-UI-002"
+      ],
+      "journeys": [
+        "J-05"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "controls": [
+        "SCR-ORDER-DETAIL.approve"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "a failed approval shows an error message",
+        "the approve control stays available after a failure"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-UI-03", "title": "Form fields have visible labels", "layer": "web", "mutates": false, "oracle": "doc",
-      "requirements": ["REQ-UI-003"], "journeys": ["J-08"], "roles": ["staff"], "controls": ["SCR-ORDERS.item-field", "SCR-ORDERS.total-field"],
-      "expected": ["each field has a visible label that names it"], "automation": "planned"
+      "id": "TC-UI-03",
+      "title": "Form fields have visible labels",
+      "layer": "web",
+      "mutates": false,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-UI-003"
+      ],
+      "journeys": [
+        "J-08"
+      ],
+      "roles": [
+        "staff"
+      ],
+      "controls": [
+        "SCR-ORDERS.item-field",
+        "SCR-ORDERS.total-field"
+      ],
+      "expected": [
+        "each field has a visible label that names it"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-UI-04", "title": "Approve control is large enough on a phone", "layer": "mobile-web", "mutates": false, "oracle": "doc",
-      "requirements": ["REQ-UI-004"], "journeys": ["J-07"], "roles": ["manager"], "controls": ["SCR-ORDER-DETAIL.approve"],
-      "expected": ["the approve control is at least 44 by 44 CSS pixels at 390 pixels wide"], "automation": "planned"
+      "id": "TC-UI-04",
+      "title": "Approve control is large enough on a phone",
+      "layer": "mobile-web",
+      "mutates": false,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-UI-004"
+      ],
+      "journeys": [
+        "J-07"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "controls": [
+        "SCR-ORDER-DETAIL.approve"
+      ],
+      "expected": [
+        "the approve control is at least 44 by 44 CSS pixels at 390 pixels wide"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-UI-05", "title": "The order table reflows on a narrow screen", "layer": "mobile-web", "mutates": false, "oracle": "doc",
-      "requirements": ["REQ-UI-005"], "journeys": ["J-07"], "roles": ["manager"],
-      "expected": ["at 320 CSS pixels the order table reflows and no column is clipped"], "automation": "planned"
+      "id": "TC-UI-05",
+      "title": "The order table reflows on a narrow screen",
+      "layer": "mobile-web",
+      "mutates": false,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-UI-005"
+      ],
+      "journeys": [
+        "J-07"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "expected": [
+        "at 320 CSS pixels the order table reflows and no column is clipped"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-UI-08", "title": "The create form shows the API's field error", "layer": "web", "mutates": true, "oracle": "contract",
-      "requirements": ["REQ-ORD-001"], "journeys": ["J-02"], "roles": ["staff"], "controls": ["SCR-ORDERS.create", "SCR-ORDERS.item-field", "SCR-ORDERS.total-field"], "fixtures": ["FX-ACCOUNTS"],
-      "expected": ["a blank item shows the field error returned by the API"], "automation": "planned"
+      "id": "TC-UI-08",
+      "title": "The create form shows the API's field error",
+      "layer": "web",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-ORD-001"
+      ],
+      "journeys": [
+        "J-02"
+      ],
+      "roles": [
+        "staff"
+      ],
+      "controls": [
+        "SCR-ORDERS.create",
+        "SCR-ORDERS.item-field",
+        "SCR-ORDERS.total-field"
+      ],
+      "fixtures": [
+        "FX-ACCOUNTS"
+      ],
+      "expected": [
+        "a blank item shows the field error returned by the API"
+      ],
+      "automation": "planned"
     },
     {
-      "id": "TC-SEC-01", "title": "The Android release manifest is not debuggable and allows no cleartext", "layer": "static", "mutates": false, "oracle": "doc",
-      "requirements": ["REQ-SEC-001"], "journeys": ["J-09"], "roles": ["admin"],
-      "expected": ["android:debuggable is false", "android:usesCleartextTraffic is false", "no hardcoded key in the resources"], "automation": "planned"
+      "id": "TC-SEC-01",
+      "title": "The Android release manifest is not debuggable and allows no cleartext",
+      "layer": "static",
+      "mutates": false,
+      "oracle": "doc",
+      "requirements": [
+        "REQ-SEC-001"
+      ],
+      "journeys": [
+        "J-09"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "expected": [
+        "android:debuggable is false",
+        "android:usesCleartextTraffic is false",
+        "no hardcoded key in the resources"
+      ],
+      "automation": "planned"
     }
   ],
   "designMap": {
     "source": "none",
     "note": "The fixture has no design files. Visual parity is not performed; spec checks only.",
     "screens": {
-      "SCR-LOGIN": { "status": "no reference" },
-      "SCR-ORDERS": { "status": "no reference" },
-      "SCR-ORDER-DETAIL": { "status": "no reference" }
+      "SCR-LOGIN": {
+        "status": "no reference"
+      },
+      "SCR-ORDERS": {
+        "status": "no reference"
+      },
+      "SCR-ORDER-DETAIL": {
+        "status": "no reference"
+      }
     }
   }
 }

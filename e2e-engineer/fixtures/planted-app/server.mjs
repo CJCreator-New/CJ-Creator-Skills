@@ -1,15 +1,17 @@
 // A small order-approval app with planted defects, used to test the e2e-engineer. It is a fixture,
 // not a product. Its passwords and seed data are fake and exist only for tests.
 //
-// Defects are switched on with the PLANTED environment variable: "all" (the default), "none" (the
-// clean control), or a comma-separated list of flag names. The clean control is this same code with
-// PLANTED=none, so the two cannot drift apart.
+// Data lives in a SQLite database. Seed it with scripts/env.mjs first; this server does not create
+// tables. Defects are switched on with the PLANTED environment variable: "all" (the default), "none"
+// (the clean control), or a comma-separated list of flag names. The clean control is this same code
+// with PLANTED=none, so the two cannot drift apart.
 
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -34,23 +36,6 @@ export function parsePlanted(value = process.env.PLANTED ?? 'all') {
   const unknown = names.filter((name) => !FLAGS.includes(name));
   if (unknown.length > 0) throw new Error(`unknown planted flag: ${unknown.join(', ')}`);
   return new Set(names);
-}
-
-// Fixture accounts. These passwords are fake and exist only for this test app.
-const USERS = [
-  { id: 'u-admin', username: 'admin', password: 'admin-pass', role: 'admin', tenant: 't1' },
-  { id: 'u-mgr', username: 'manager', password: 'manager-pass', role: 'manager', tenant: 't1' },
-  { id: 'u-staff', username: 'staff', password: 'staff-pass', role: 'staff', tenant: 't1' },
-  { id: 'u-out', username: 'outsider', password: 'outsider-pass', role: 'manager', tenant: 't2' },
-];
-
-function seedOrders() {
-  return [
-    { id: 'o-1', tenant: 't1', owner: 'u-staff', item: 'Desk', total: 500, status: 'pending', approvals: 0 },
-    { id: 'o-2', tenant: 't1', owner: 'u-staff', item: 'Server rack', total: 5000, status: 'pending', approvals: 0 },
-    { id: 'o-3', tenant: 't2', owner: 'u-out', item: 'Chair', total: 100, status: 'pending', approvals: 0 },
-    { id: 'o-4', tenant: 't1', owner: 'u-mgr', item: 'Monitor', total: 300, status: 'pending', approvals: 0 },
-  ];
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -86,25 +71,31 @@ function view(order, { stringTotal = false } = {}) {
   return stringTotal ? { ...rest, total: String(order.total) } : rest;
 }
 
-// Creates a server with the given planted flags. Each server has its own seed data and sessions.
-export function createFixtureServer({ planted = parsePlanted() } = {}) {
+// Creates a server over the database at dbFile, with the given planted flags.
+export function createFixtureServer({ planted = parsePlanted(), dbFile } = {}) {
+  if (!dbFile || !existsSync(dbFile)) {
+    throw new Error('a seeded database is required: run scripts/env.mjs seed, then pass its file as dbFile');
+  }
   const on = (flag) => planted.has(flag);
-  const orders = seedOrders();
+  const db = new DatabaseSync(dbFile);
   const tokens = new Map();
   const index = readFileSync(join(HERE, 'public', 'index.html'), 'utf8');
+
+  const userById = (id) => db.prepare('SELECT id, username, role, tenant FROM users WHERE id = ?').get(id);
+  const orderById = (id) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
 
   function currentUser(req) {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     const userId = token && tokens.get(token);
-    return userId ? USERS.find((user) => user.id === userId) : null;
+    return userId ? userById(userId) : null;
   }
 
   // Visibility is the tenant boundary. The object-level-access defect removes it for reads and writes.
   const visible = (user, order) => order.tenant === user.tenant;
 
   async function approve(user, id, res) {
-    const order = orders.find((candidate) => candidate.id === id);
+    const order = orderById(id);
     if (!order) return fail(res, 404, 'not_found', 'no such order');
     if (!on('object-level-access') && !visible(user, order)) return fail(res, 404, 'not_found', 'no such order');
     if (!on('ui-only-approve-permission') && !['manager', 'admin'].includes(user.role)) {
@@ -114,14 +105,19 @@ export function createFixtureServer({ planted = parsePlanted() } = {}) {
     if (!on('approval-skips-director') && order.total > 1000 && user.role !== 'admin') {
       return fail(res, 403, 'forbidden', 'orders over 1000 need director approval');
     }
-    if (order.status !== 'pending') return fail(res, 409, 'conflict', `order is ${order.status}`);
+    if (order.status !== 'pending') return fail(res, 409, 'conflict', 'order is not pending');
+
     if (on('approval-race')) {
-      // The check above and the write below are separated by an await, so two requests can both pass.
+      // Defect: the status was read above, and the write below does not check it again. Two requests
+      // that both read "pending" both write "approved", and the count goes to 2.
       await delay(50);
+      db.prepare('UPDATE orders SET status = ?, approvals = approvals + 1 WHERE id = ?').run('approved', id);
+    } else {
+      // The check and the write are one statement, so only one request can move the order out of pending.
+      const result = db.prepare("UPDATE orders SET status = 'approved', approvals = approvals + 1 WHERE id = ? AND status = 'pending'").run(id);
+      if (result.changes === 0) return fail(res, 409, 'conflict', 'order is not pending');
     }
-    order.approvals += 1;
-    order.status = 'approved';
-    return send(res, 200, view(order));
+    return send(res, 200, view(orderById(id)));
   }
 
   function createOrder(user, body, res) {
@@ -133,15 +129,22 @@ export function createFixtureServer({ planted = parsePlanted() } = {}) {
         return fail(res, 422, 'validation', 'total must be a number greater than zero', { field: 'total' });
       }
     }
-    const order = { id: `o-${orders.length + 1}`, tenant: user.tenant, owner: user.id, item, total, status: 'pending', approvals: 0 };
-    orders.push(order);
-    return send(res, 201, view(order));
+    const count = db.prepare('SELECT COUNT(*) AS n FROM orders').get().n;
+    const id = `o-${count + 1}`;
+    db.prepare("INSERT INTO orders (id, tenant, owner, item, total, status, approvals) VALUES (?, ?, ?, ?, ?, 'pending', 0)").run(
+      id,
+      user.tenant,
+      user.id,
+      item,
+      total,
+    );
+    return send(res, 201, view(orderById(id)));
   }
 
   async function api(req, res, url) {
     if (req.method === 'POST' && url.pathname === '/api/login') {
       const body = await readJson(req);
-      const user = USERS.find((candidate) => candidate.username === body?.username && candidate.password === body?.password);
+      const user = body && db.prepare('SELECT id, username, role, tenant FROM users WHERE username = ? AND password = ?').get(body.username, body.password);
       if (!user) return fail(res, 401, 'unauthenticated', 'wrong username or password');
       const token = randomUUID();
       tokens.set(token, user.id);
@@ -152,7 +155,8 @@ export function createFixtureServer({ planted = parsePlanted() } = {}) {
     if (!user) return fail(res, 401, 'unauthenticated', 'sign in required');
 
     if (req.method === 'GET' && url.pathname === '/api/orders') {
-      return send(res, 200, { orders: orders.filter((order) => visible(user, order)).map((order) => view(order)) });
+      const rows = db.prepare('SELECT * FROM orders WHERE tenant = ? ORDER BY id').all(user.tenant);
+      return send(res, 200, { orders: rows.map((order) => view(order)) });
     }
     if (req.method === 'POST' && url.pathname === '/api/orders') {
       const body = await readJson(req);
@@ -162,7 +166,7 @@ export function createFixtureServer({ planted = parsePlanted() } = {}) {
 
     const detail = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
     if (req.method === 'GET' && detail) {
-      const order = orders.find((candidate) => candidate.id === detail[1]);
+      const order = orderById(detail[1]);
       if (!order || (!on('object-level-access') && !visible(user, order))) return fail(res, 404, 'not_found', 'no such order');
       return send(res, 200, { order: view(order, { stringTotal: on('contract-total-string') }) });
     }
@@ -187,13 +191,15 @@ export function createFixtureServer({ planted = parsePlanted() } = {}) {
       return fail(res, 500, 'internal', 'server error');
     }
   });
-  return { server, orders, planted };
+  server.on('close', () => db.close());
+  return { server, planted };
 }
 
-// Starts the server when this file is run directly. PORT defaults to 4173.
+// Starts the server when this file is run directly. PORT defaults to 4173; DB_FILE must name a
+// database seeded by scripts/env.mjs.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(process.env.PORT || 4173);
-  const { server, planted } = createFixtureServer();
+  const { server, planted } = createFixtureServer({ dbFile: process.env.DB_FILE });
   server.listen(port, () => {
     console.log(`planted-app listening on ${port} with flags: ${[...planted].join(', ') || 'none'}`);
   });

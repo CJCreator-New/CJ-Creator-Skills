@@ -3,6 +3,8 @@
 // optional design map. Errors stop the plan from being frozen. Gaps and warnings are reported, never
 // hidden. Coverage is reported as separate measures, with no single percentage.
 
+import { validateChecks } from './checks.mjs';
+
 export const ORACLES = ['spec', 'design', 'contract', 'doc', 'observed'];
 export const PRIORITIES = ['P0', 'P1', 'P2'];
 export const LAYERS = ['web', 'mobile-web', 'android', 'ios', 'api', 'db', 'static'];
@@ -123,6 +125,9 @@ export function validatePlan(ledger) {
     if (!AUTOMATION.includes(test.automation)) errors.push(`test case ${test.id} needs an automation status: ${AUTOMATION.join(', ')}`);
     if (typeof test.mutates !== 'boolean') errors.push(`test case ${test.id} must say whether it mutates data (mutates: true or false)`);
     if (!Array.isArray(test.expected) || test.expected.length === 0) errors.push(`test case ${test.id} has no expected results`);
+    if (test.automation === 'implemented' && ['api', 'db'].includes(test.layer)) {
+      for (const problem of validateChecks(test)) errors.push(problem);
+    }
 
     if (!ORACLES.includes(test.oracle)) {
       errors.push(`test case ${test.id} needs an oracle: ${ORACLES.join(', ')}`);

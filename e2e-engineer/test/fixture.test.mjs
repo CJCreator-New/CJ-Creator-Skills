@@ -5,15 +5,19 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createFixtureServer, FLAGS, parsePlanted } from '../fixtures/planted-app/server.mjs';
+import { seededDatabase } from './helpers.mjs';
 
+// Each server gets its own seeded database, so one test's writes never reach another.
 async function start(planted) {
-  const { server } = createFixtureServer({ planted });
+  const db = seededDatabase();
+  const { server } = createFixtureServer({ planted, dbFile: db.file });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const stop = () =>
     new Promise((resolve) => {
       server.close(resolve);
       server.closeAllConnections();
+      db.cleanup();
     });
   return { base, stop };
 }

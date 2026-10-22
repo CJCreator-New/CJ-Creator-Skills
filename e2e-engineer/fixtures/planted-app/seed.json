@@ -1,0 +1,14 @@
+{
+  "users": [
+    { "id": "u-admin", "username": "admin", "password": "admin-pass", "role": "admin", "tenant": "t1" },
+    { "id": "u-mgr", "username": "manager", "password": "manager-pass", "role": "manager", "tenant": "t1" },
+    { "id": "u-staff", "username": "staff", "password": "staff-pass", "role": "staff", "tenant": "t1" },
+    { "id": "u-out", "username": "outsider", "password": "outsider-pass", "role": "manager", "tenant": "t2" }
+  ],
+  "orders": [
+    { "id": "o-1", "tenant": "t1", "owner": "u-staff", "item": "Desk", "total": 500, "status": "pending", "approvals": 0 },
+    { "id": "o-2", "tenant": "t1", "owner": "u-staff", "item": "Server rack", "total": 5000, "status": "pending", "approvals": 0 },
+    { "id": "o-3", "tenant": "t2", "owner": "u-out", "item": "Chair", "total": 100, "status": "pending", "approvals": 0 },
+    { "id": "o-4", "tenant": "t1", "owner": "u-mgr", "item": "Monitor", "total": 300, "status": "pending", "approvals": 0 }
+  ]
+}

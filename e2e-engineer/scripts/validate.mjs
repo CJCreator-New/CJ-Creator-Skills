@@ -75,6 +75,18 @@ const planCheck = validatePlan(readJson(join(fixtureDir, 'plan.json')));
 check(planCheck.errors.length === 0, `fixtures/planted-app/plan.json has plan errors: ${planCheck.errors.join('; ')}`);
 check(planCheck.gaps.length === 3, 'fixtures/planted-app/plan.json should show its three intentional gaps');
 
+// The hook must parse, and it must run the guard that exists in this plugin.
+let hooks = null;
+try {
+  hooks = readJson(join(PLUGIN, 'hooks/hooks.json'));
+} catch {
+  hooks = null;
+}
+check(hooks !== null, 'hooks/hooks.json must parse');
+const hookCommands = hooks ? Object.values(hooks.hooks || {}).flat().flatMap((entry) => (entry.hooks || []).map((h) => h.command)) : [];
+check(hookCommands.some((c) => c && c.includes('${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs')), 'hooks.json must run hooks/guard.mjs');
+check(existsSync(join(PLUGIN, 'hooks/guard.mjs')), 'hooks/guard.mjs must exist');
+
 const marketplace = readJson(join(ROOT, '.claude-plugin/marketplace.json'));
 const entry = marketplace.plugins.find((plugin) => plugin.name === 'e2e-engineer');
 check(entry && entry.source === './e2e-engineer', 'marketplace.json needs an e2e-engineer entry with source ./e2e-engineer');

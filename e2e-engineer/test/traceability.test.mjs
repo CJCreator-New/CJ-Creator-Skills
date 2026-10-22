@@ -18,8 +18,9 @@ describe('the planted-app plan', () => {
   });
 
   test('reports the derived, unconfirmed and observed items as warnings', () => {
-    assert.ok(result.warnings.includes('requirement REQ-APR-004 is derived and not confirmed, so it cannot drive a FAIL'));
+    assert.ok(result.warnings.includes('requirement REQ-UI-001 is derived and not confirmed, so it cannot drive a FAIL'));
     assert.ok(result.warnings.includes('test case TC-UI-01 has the observed oracle, so it can record behaviour but cannot PASS or FAIL'));
+    assert.equal(result.warnings.length, 4);
   });
 
   test('reports the controls with no test as gaps, and does not hide them', () => {
@@ -32,7 +33,7 @@ describe('the planted-app plan', () => {
   test('reports coverage as separate measures, with P0 journeys counted on their own', () => {
     assert.deepEqual(result.coverage.requirements, { total: 15, withTestCases: 15 });
     assert.deepEqual(result.coverage.journeys, { total: 9, p0Total: 4, p0WithTestCases: 4, withTestCases: 9 });
-    assert.deepEqual(result.coverage.testCases, { total: 18, planned: 18, implemented: 0, executed: 0 });
+    assert.deepEqual(result.coverage.testCases, { total: 18, planned: 8, implemented: 10, executed: 0 });
   });
 });
 
@@ -44,9 +45,9 @@ describe('a test case', () => {
 
   test('whose oracle differs from its requirement is an error', () => {
     const result = check((l) => {
-      l.testCases.find((t) => t.id === 'TC-APR-04').oracle = 'contract';
+      l.testCases.find((t) => t.id === 'TC-APR-04').oracle = 'spec';
     });
-    assert.ok(result.errors.includes('test case TC-APR-04 has the contract oracle, but REQ-APR-004 has the spec oracle'));
+    assert.ok(result.errors.includes('test case TC-APR-04 has the spec oracle, but REQ-APR-004 has the contract oracle'));
   });
 
   test('with a non-observed oracle and no requirement is an error', () => {
@@ -181,5 +182,37 @@ describe('the whole plan', () => {
       l.testCases = l.testCases.filter((t) => !t.requirements.includes('REQ-SEC-001'));
     });
     assert.ok(result.gaps.includes('requirement REQ-SEC-001 has no test case'));
+  });
+});
+
+describe('executable checks', () => {
+  test('an implemented api test case with no checks is an error', () => {
+    const result = check((l) => {
+      delete l.testCases.find((t) => t.id === 'TC-AUTH-02').checks;
+    });
+    assert.ok(result.errors.includes('test case TC-AUTH-02 has no checks'));
+  });
+
+  test('an implemented db test case with a malformed check is an error', () => {
+    const result = check((l) => {
+      l.testCases.find((t) => t.id === 'TC-DB-01').checks = [{ kind: 'db', query: 'DELETE FROM orders', expectRows: [] }];
+    });
+    assert.ok(result.errors.some((e) => e.includes('query must be one SELECT statement')));
+  });
+
+  test('a planned test case needs no checks yet', () => {
+    const result = check((l) => {
+      const tc = l.testCases.find((t) => t.id === 'TC-AUTH-02');
+      tc.automation = 'planned';
+      delete tc.checks;
+    });
+    assert.deepEqual(result.errors, []);
+  });
+
+  test('the fixture plan\'s api and db checks are all implemented, and the web checks are not', () => {
+    const plan = fixtureLedger();
+    const implemented = plan.testCases.filter((t) => t.automation === 'implemented').map((t) => t.id);
+    assert.equal(implemented.length, 10);
+    assert.ok(!implemented.includes('TC-UI-01'));
   });
 });

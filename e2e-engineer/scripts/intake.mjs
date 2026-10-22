@@ -3,8 +3,8 @@
 // probe the tools, and write the ledger. A refused run is recorded, and nothing else starts.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { treeHash } from './fingerprint.mjs';
 import { validateRun } from './safety.mjs';
@@ -55,6 +55,10 @@ export function runIntake({ root, configPath, env, platform, now = new Date().to
     now,
   });
   writeLedger(ledgerPath, ledger);
+  // The active marker tells the guard that a run is in progress. It exists only for an allowed run.
+  const marker = join(dirname(ledgerPath), 'active');
+  if (safety.allowed) writeFileSync(marker, now);
+  else rmSync(marker, { force: true });
   return { ledgerPath, intake: ledger.intake };
 }
 

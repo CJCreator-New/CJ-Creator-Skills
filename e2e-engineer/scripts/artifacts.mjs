@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { status, readLedger } from './ledger.mjs';
+import { status, readLedger, testState } from './ledger.mjs';
 import { canonical, planDigest, planState } from './plan.mjs';
 import { validatePlan } from './traceability.mjs';
 
@@ -394,7 +394,7 @@ function renderReport(c) {
       ['Controls mapped to test cases', `${cov.controls.mapped} of ${cov.controls.total}`],
       ['Permissions with test cases', `${cov.permissions.withTestCases} of ${cov.permissions.total}`],
       ['Operations with test cases', `${cov.operations.withTestCases} of ${cov.operations.total}`],
-      ['Test cases: planned / implemented / executed', `${cov.testCases.planned} / ${cov.testCases.implemented} / ${cov.testCases.executed}`],
+      ['Test cases: planned / implemented / executed', `${cov.testCases.planned} / ${cov.testCases.implemented} / ${c.tests.filter((tc) => testState(ledger, tc.id).state !== 'not run').length}`],
     ]),
     '## Execution results',
     '',
