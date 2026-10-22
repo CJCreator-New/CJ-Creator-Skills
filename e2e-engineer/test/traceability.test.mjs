@@ -17,10 +17,15 @@ describe('the planted-app plan', () => {
     assert.deepEqual(result.errors, []);
   });
 
-  test('reports the derived, unconfirmed and observed items as warnings', () => {
-    assert.ok(result.warnings.includes('requirement REQ-UI-001 is derived and not confirmed, so it cannot drive a FAIL'));
-    assert.ok(result.warnings.includes('test case TC-UI-01 has the observed oracle, so it can record behaviour but cannot PASS or FAIL'));
-    assert.equal(result.warnings.length, 4);
+  test('reports the derived, unconfirmed requirement as a warning', () => {
+    assert.deepEqual(result.warnings, ['requirement REQ-UI-004 is derived and not confirmed, so it cannot drive a FAIL']);
+  });
+
+  test('an observed test case is a warning, because it can record but cannot PASS or FAIL', () => {
+    const warned = check((l) => {
+      l.testCases.find((t) => t.id === 'TC-UI-01').oracle = 'observed';
+    });
+    assert.ok(warned.warnings.includes('test case TC-UI-01 has the observed oracle, so it can record behaviour but cannot PASS or FAIL'));
   });
 
   test('reports the controls with no test as gaps, and does not hide them', () => {
@@ -33,7 +38,7 @@ describe('the planted-app plan', () => {
   test('reports coverage as separate measures, with P0 journeys counted on their own', () => {
     assert.deepEqual(result.coverage.requirements, { total: 15, withTestCases: 15 });
     assert.deepEqual(result.coverage.journeys, { total: 9, p0Total: 4, p0WithTestCases: 4, withTestCases: 9 });
-    assert.deepEqual(result.coverage.testCases, { total: 18, planned: 8, implemented: 10, executed: 0 });
+    assert.deepEqual(result.coverage.testCases, { total: 19, planned: 1, implemented: 18, executed: 0 });
   });
 });
 
@@ -209,10 +214,11 @@ describe('executable checks', () => {
     assert.deepEqual(result.errors, []);
   });
 
-  test('the fixture plan\'s api and db checks are all implemented, and the web checks are not', () => {
+  test('the fixture plan implements its api, db and web test cases, and leaves the static one planned', () => {
     const plan = fixtureLedger();
     const implemented = plan.testCases.filter((t) => t.automation === 'implemented').map((t) => t.id);
-    assert.equal(implemented.length, 10);
-    assert.ok(!implemented.includes('TC-UI-01'));
+    assert.equal(implemented.length, 18);
+    assert.ok(implemented.includes('TC-UI-09'));
+    assert.ok(!implemented.includes('TC-SEC-01'));
   });
 });

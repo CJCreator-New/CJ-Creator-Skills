@@ -1,22 +1,61 @@
 {
   "name": "orders-app (example)",
   "targets": {
-    "web": { "baseUrl": "http://localhost:4173" },
-    "mobile-web": { "baseUrl": "http://localhost:4173" },
-    "android": { "packageName": "com.example.orders", "binary": "builds/orders.apk", "versionName": "1.0.0", "buildNumber": "1" },
-    "ios": { "bundleId": "com.example.orders", "binary": "builds/Orders.ipa", "versionName": "1.0.0", "buildNumber": "1" }
+    "web": {
+      "baseUrl": "http://localhost:4173"
+    },
+    "mobile-web": {
+      "baseUrl": "http://localhost:4173"
+    },
+    "android": {
+      "packageName": "com.example.orders",
+      "binary": "builds/orders.apk",
+      "versionName": "1.0.0",
+      "buildNumber": "1"
+    },
+    "ios": {
+      "bundleId": "com.example.orders",
+      "binary": "builds/Orders.ipa",
+      "versionName": "1.0.0",
+      "buildNumber": "1"
+    }
   },
   "start": "node server.mjs",
   "healthUrl": "http://localhost:4173/health",
-  "db": { "engine": "sqlite", "name": "test_orders" },
+  "db": {
+    "engine": "sqlite",
+    "name": "test_orders"
+  },
   "allowlist": {
-    "hosts": ["localhost"],
-    "packageNames": ["com.example.orders"],
-    "bundleIds": ["com.example.orders"],
+    "hosts": [
+      "localhost"
+    ],
+    "packageNames": [
+      "com.example.orders"
+    ],
+    "bundleIds": [
+      "com.example.orders"
+    ],
     "dbNamePattern": "^(test|qa)_"
   },
   "authorization": null,
   "allowReset": false,
-  "timezones": ["UTC"],
-  "loadLimits": null
+  "timezones": [
+    "UTC"
+  ],
+  "loadLimits": null,
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800
+    },
+    "phone": {
+      "width": 390,
+      "height": 844
+    },
+    "narrow": {
+      "width": 320,
+      "height": 640
+    }
+  }
 }

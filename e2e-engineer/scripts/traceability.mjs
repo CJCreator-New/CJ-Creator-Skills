@@ -4,6 +4,7 @@
 // hidden. Coverage is reported as separate measures, with no single percentage.
 
 import { validateChecks } from './checks.mjs';
+import { validateSteps } from './web-steps.mjs';
 
 export const ORACLES = ['spec', 'design', 'contract', 'doc', 'observed'];
 export const PRIORITIES = ['P0', 'P1', 'P2'];
@@ -127,6 +128,9 @@ export function validatePlan(ledger) {
     if (!Array.isArray(test.expected) || test.expected.length === 0) errors.push(`test case ${test.id} has no expected results`);
     if (test.automation === 'implemented' && ['api', 'db'].includes(test.layer)) {
       for (const problem of validateChecks(test)) errors.push(problem);
+    }
+    if (test.automation === 'implemented' && ['web', 'mobile-web'].includes(test.layer)) {
+      for (const problem of validateSteps(test)) errors.push(problem);
     }
 
     if (!ORACLES.includes(test.oracle)) {

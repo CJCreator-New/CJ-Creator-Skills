@@ -124,7 +124,13 @@ export function status(ledger) {
       unverified.push(`P0 journey ${journey.id} is not verified: ${detail}`);
     }
   }
-  if (unverified.length > 0) return { status: 'PARTIALLY TESTED', reasons: unverified };
+  // G19: a planned test case that has not passed keeps the gate at PARTIALLY TESTED, even when every P0
+  // journey is verified. PASS needs every test case in the plan to have a current pass.
+  const p0Tests = new Set(p0.flatMap((journey) => journeyTests(ledger, journey.id).map((tc) => tc.id)));
+  const others = ledger.testCases
+    .filter((tc) => !p0Tests.has(tc.id) && testState(ledger, tc.id).state !== 'passed')
+    .map((tc) => `${tc.id} ${testState(ledger, tc.id).state}`);
+  if (unverified.length > 0 || others.length > 0) return { status: 'PARTIALLY TESTED', reasons: [...unverified, ...others] };
   return { status: 'PASS', reasons: [] };
 }
 

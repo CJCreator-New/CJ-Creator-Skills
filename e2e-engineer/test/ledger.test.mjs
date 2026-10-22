@@ -19,7 +19,7 @@ import {
 import { approvePlan, freezePlan } from '../scripts/plan.mjs';
 
 // The fixture's P0 journeys and the test cases that cover each one.
-const P0 = { 'J-01': ['TC-AUTH-01', 'TC-AUTH-02', 'TC-UI-06'], 'J-02': ['TC-ORD-01', 'TC-ORD-02', 'TC-UI-08'], 'J-03': ['TC-APR-01', 'TC-APR-02', 'TC-APR-03', 'TC-APR-04', 'TC-DB-01'], 'J-04': ['TC-ORD-03'] };
+const P0 = { 'J-01': ['TC-AUTH-01', 'TC-AUTH-02', 'TC-UI-06'], 'J-02': ['TC-ORD-01', 'TC-ORD-02', 'TC-UI-08'], 'J-03': ['TC-APR-01', 'TC-APR-02', 'TC-APR-03', 'TC-APR-04', 'TC-DB-01', 'TC-UI-09'], 'J-04': ['TC-ORD-03'] };
 
 function run(ledger, testCase, result, extra = {}) {
   return recordRun(ledger, { testCase, result, now: NOW, ...extra });
@@ -66,7 +66,8 @@ test('a frozen but unapproved plan is blocked, and says the plan is not approved
 test('an approved plan with no runs is partially tested, and every P0 journey says what is missing', () => {
   const result = status(approved());
   assert.equal(result.status, 'PARTIALLY TESTED');
-  assert.equal(result.reasons.length, 4);
+  // Four P0 journeys are unverified, and six planned test cases outside them have not run (G19).
+  assert.equal(result.reasons.length, 10);
   assert.ok(result.reasons.some((r) => r.startsWith('P0 journey J-03 is not verified: TC-APR-01 not run')));
 });
 
@@ -76,6 +77,8 @@ test('the gate passes only when every test case of every P0 journey has a curren
   for (const id of all.slice(0, -1)) run(ledger, id, 'passed');
   assert.equal(status(ledger).status, 'PARTIALLY TESTED');
   run(ledger, all[all.length - 1], 'passed');
+  assert.ok(status(ledger).reasons.every((r) => /^TC-(SEC-\d+|UI-0[1-5]) /.test(r)), JSON.stringify(status(ledger).reasons));
+  for (const tc of ledger.testCases) if (!all.includes(tc.id)) run(ledger, tc.id, 'passed');
   assert.deepEqual(status(ledger), { status: 'PASS', reasons: [] });
 });
 
@@ -98,7 +101,7 @@ test('a blocked P0 test case keeps the gate at BLOCKED, with its reason', () => 
 test('a run from an earlier build is stale, and it does not count toward the gate', () => {
   const ledger = approved();
   const all = Object.values(P0).flat();
-  for (const id of all) run(ledger, id, 'passed');
+  for (const tc of ledger.testCases) run(ledger, tc.id, 'passed');
   assert.equal(status(ledger).status, 'PASS');
   ledger.intake.build.treeHash = 'a-different-tree';
   assert.equal(testState(ledger, 'TC-ORD-03').state, 'stale');

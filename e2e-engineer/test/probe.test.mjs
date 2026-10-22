@@ -22,8 +22,8 @@ test('with no tools installed, every target is blocked with a reason, and none i
   assert.deepEqual(readiness.ios, { status: 'blocked', reason: 'iOS simulators need macOS' });
 });
 
-test('mobile web is ready when a browser is present, because it runs with device emulation', () => {
-  const probes = { ...NONE, browser: { found: true, path: '/opt/pw-browsers/chromium-1' } };
+test('mobile web is ready when a browser and Playwright are present, because it runs with device emulation', () => {
+  const probes = { ...NONE, browser: { found: true, path: '/opt/pw-browsers/chromium-1' }, playwright: { found: true } };
   const readiness = targetReadiness(probes, { 'mobile-web': {} });
   assert.equal(readiness['mobile-web'].status, 'ready');
 });

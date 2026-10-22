@@ -82,11 +82,16 @@ export function probeAll({ env = process.env, platform = process.platform } = {}
 export function targetReadiness(probes, targets) {
   const out = {};
   const browserReady = probes.browser.found;
-  if (targets.web) out.web = browserReady ? { status: 'ready' } : { status: 'blocked', reason: 'no Chromium browser was found' };
+  const webReason = !browserReady
+    ? 'no Chromium browser was found'
+    : !probes.playwright?.found
+      ? probes.playwright?.reason ?? 'Playwright is not available'
+      : null;
+  if (targets.web) out.web = webReason ? { status: 'blocked', reason: webReason } : { status: 'ready' };
   if (targets['mobile-web']) {
-    out['mobile-web'] = browserReady
-      ? { status: 'ready', note: 'device emulation in Chromium' }
-      : { status: 'blocked', reason: 'no Chromium browser was found' };
+    out['mobile-web'] = webReason
+      ? { status: 'blocked', reason: webReason }
+      : { status: 'ready', note: 'device emulation in Chromium' };
   }
   if (targets.android) {
     const { adb, emulatorTool, devices } = probes.android;

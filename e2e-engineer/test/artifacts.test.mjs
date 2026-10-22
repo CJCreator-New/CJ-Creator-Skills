@@ -56,7 +56,7 @@ test('every test case appears in the catalogue', () => {
 
 test('the requirement table shows a derived, unconfirmed requirement as not confirmed', () => {
   const acceptance = renderArtifacts(fixtureLedger(), { now: NOW })[NAMES.acceptance];
-  assert.match(acceptance, /\| REQ-UI-001 .*no \(derived\)/);
+  assert.match(acceptance, /\| REQ-UI-004 .*no \(derived\)/);
 });
 
 test('the report keeps coverage as separate counts, with no combined percentage', () => {

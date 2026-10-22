@@ -1,6 +1,6 @@
 ---
 name: e2e-engineer
-description: End-to-end testing of an application from its user journeys. Discovers the screens, the API and the database, plans the journeys with an approval gate, and verifies them through the browser, mobile web, native Android and iOS, the API and the data layer, then reports an evidence-based release status. Use when a build is ready for end-to-end testing. This version (v0.3) adds the test database control and the API and data checks; browser and device execution come in later versions.
+description: End-to-end testing of an application from its user journeys. Discovers the screens, the API and the database, plans the journeys with an approval gate, and verifies them through the browser, mobile web, native Android and iOS, the API and the data layer, then reports an evidence-based release status. Use when a build is ready for end-to-end testing. This version (v0.4) adds browser execution of the web and mobile-web test cases, alongside the API and data checks. Native device execution and static checks come in later versions.
 argument-hint: '<the build or release to test, and the config path if not qa.config.json>'
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Request: $ARGUMENTS
 
-This is version 0.3. It checks that a run is allowed, records the build identity and tool readiness, discovers the journeys with the analysts, freezes and approves the plan, prepares a test database and proves it is the right one, runs the API and data checks against the target, and records each run and each defect. It does not yet run the browser, device or static checks. Those come in later versions, in the order in `docs/e2e-engineer-plan.md`.
+This is version 0.4. It checks that a run is allowed, records the build identity and tool readiness, discovers the journeys with the analysts, freezes and approves the plan, prepares a test database and proves it is the right one, runs the API and data checks, drives the web and mobile-web test cases in Chromium, and records each run and each defect. It does not yet run native devices or static checks. Those come in later versions, in the order in `docs/e2e-engineer-plan.md`.
 
 The reference files in `references/` say how each stage works. Read the one a stage needs, once, when that stage starts.
 
@@ -17,6 +17,7 @@ The reference files in `references/` say how each stage works. Read the one a st
 - `design-references.md`: design sources and the design map.
 - `strategy-and-approval.md`: the freeze, the approval and staleness.
 - `backend-verification.md`: the executable check kinds, credentials, isolation and reset, and what a result means.
+- `web-verification.md`: the browser steps, viewports, isolation, redacted evidence, and the built-in accessibility rules.
 - `reporting-and-gates.md`: the artifact files and the gate precedence.
 
 ## Hard rules
@@ -62,6 +63,9 @@ The reference files in `references/` say how each stage works. Read the one a st
 11. Dispatch `api-runner`, which runs the suite. It signs in with the role accounts from the environment variables the plan names, and it records each run and each defect:
     `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-api.mjs" <ledger> <config> --root <repo> --base <url>`
     Report what it returns: the counts, each failure with its first message, and each blocked check with its reason. A failure is a finding for the developers, not a verdict on the build.
+11a. Dispatch `web-runner`, which drives the web and mobile-web test cases in Chromium. It needs Playwright in the target repository, or the path set in `browser.playwrightModule`; the skill never installs it. It records each run and each defect, and it stores a screenshot and a redacted log per test case:
+    `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-web.mjs" <ledger> <config> --root <repo> --web <url> --mobile <url>`
+    Before you describe a failure, open its screenshot and check what the page shows. Report the screenshot, not your expectation.
 12. Show the gate status:
     `node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs" status <ledger>`
     Report the status it returns. Do not choose a better one.
@@ -70,4 +74,4 @@ The reference files in `references/` say how each stage works. Read the one a st
 
 If the user changes the plan after approval, the approval no longer counts. Freeze and approve the new version before the suite runs again.
 
-Until browser and device execution are built, the status is `BLOCKED`, `PARTIALLY TESTED` or `FAIL`. The mobile and web test cases are `planned`, so no P0 journey can be verified yet.
+The gate is `PASS` only when every test case in the plan has a current pass. A planned test case that has not run keeps it at `PARTIALLY TESTED`, as the plan requires. Native device and static test cases are still `planned`, so the gate cannot pass yet for a plan that includes them.

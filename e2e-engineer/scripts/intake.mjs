@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { treeHash } from './fingerprint.mjs';
 import { validateRun } from './safety.mjs';
 import { probeAll, targetReadiness } from './probe.mjs';
+import { findPlaywright } from './browser.mjs';
 import { defaultLedgerPath, readLedger, recordIntake, writeLedger } from './ledger.mjs';
 
 function gitHead(root) {
@@ -41,6 +42,7 @@ export function runIntake({ root, configPath, env, platform, now = new Date().to
     note: commit ? null : 'no git repository: every run is stale until the tree is under version control',
   };
   const probes = probeAll({ env, platform });
+  probes.playwright = findPlaywright({ root, config });
   const readiness = safety.allowed ? targetReadiness(probes, config.targets) : {};
 
   const ledgerPath = defaultLedgerPath(root);

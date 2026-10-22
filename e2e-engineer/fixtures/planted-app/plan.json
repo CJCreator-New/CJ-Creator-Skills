@@ -99,10 +99,8 @@
     {
       "id": "REQ-UI-001",
       "text": "Export downloads the orders the user can see, as JSON.",
-      "oracle": "observed",
-      "source": "the export control in the planted app; no spec",
-      "derived": true,
-      "confirmed": false
+      "oracle": "spec",
+      "source": "the Export control on SCR-ORDERS is labelled Export, and the screen inventory states that it exports the visible orders as JSON (to be confirmed)"
     },
     {
       "id": "REQ-UI-002",
@@ -764,7 +762,46 @@
         "a wrong password shows an error",
         "a valid sign-in opens the orders page"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "goto",
+          "path": "#/login"
+        },
+        {
+          "act": "fill",
+          "label": "Username",
+          "value": "$env:E2E_MANAGER_USERNAME"
+        },
+        {
+          "act": "fill",
+          "label": "Password",
+          "value": "definitely-wrong"
+        },
+        {
+          "act": "click",
+          "role": "button",
+          "name": "Sign in"
+        },
+        {
+          "act": "expectText",
+          "text": "wrong username or password"
+        },
+        {
+          "act": "fill",
+          "label": "Password",
+          "value": "$env:E2E_MANAGER_PASSWORD"
+        },
+        {
+          "act": "click",
+          "role": "button",
+          "name": "Sign in"
+        },
+        {
+          "act": "expectUrl",
+          "contains": "#/orders"
+        }
+      ]
     },
     {
       "id": "TC-ORD-01",
@@ -1259,7 +1296,7 @@
       "title": "Export downloads the visible orders",
       "layer": "web",
       "mutates": false,
-      "oracle": "observed",
+      "oracle": "spec",
       "requirements": [
         "REQ-UI-001"
       ],
@@ -1278,7 +1315,23 @@
       "expected": [
         "the export downloads orders.json with the visible orders"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders"
+        },
+        {
+          "act": "expectDownload",
+          "role": "button",
+          "name": "Export",
+          "filename": "orders.json"
+        }
+      ]
     },
     {
       "id": "TC-UI-02",
@@ -1308,7 +1361,43 @@
         "a failed approval shows an error message",
         "the approve control stays available after a failure"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-1"
+        },
+        {
+          "act": "interceptNext",
+          "method": "POST",
+          "path": "/api/orders/o-1/approve",
+          "status": 500,
+          "body": {
+            "error": {
+              "code": "internal",
+              "message": "database is busy"
+            }
+          }
+        },
+        {
+          "act": "click",
+          "role": "button",
+          "name": "Approve"
+        },
+        {
+          "act": "expectText",
+          "text": "Could not approve"
+        },
+        {
+          "act": "expectVisible",
+          "role": "button",
+          "name": "Approve"
+        }
+      ]
     },
     {
       "id": "TC-UI-03",
@@ -1332,7 +1421,23 @@
       "expected": [
         "each field has a visible label that names it"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "staff"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders"
+        },
+        {
+          "act": "scanA11y",
+          "rules": [
+            "input-label"
+          ]
+        }
+      ]
     },
     {
       "id": "TC-UI-04",
@@ -1355,7 +1460,24 @@
       "expected": [
         "the approve control is at least 44 by 44 CSS pixels at 390 pixels wide"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-1"
+        },
+        {
+          "act": "expectMinTarget",
+          "role": "button",
+          "name": "Approve",
+          "min": 44
+        }
+      ],
+      "viewport": "phone"
     },
     {
       "id": "TC-UI-05",
@@ -1375,7 +1497,22 @@
       "expected": [
         "at 320 CSS pixels the order table reflows and no column is clipped"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders"
+        },
+        {
+          "act": "expectNotClipped",
+          "role": "table"
+        }
+      ],
+      "viewport": "narrow"
     },
     {
       "id": "TC-UI-08",
@@ -1403,7 +1540,31 @@
       "expected": [
         "a blank item shows the field error returned by the API"
       ],
-      "automation": "planned"
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "staff"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders"
+        },
+        {
+          "act": "fill",
+          "label": "Total",
+          "value": "5"
+        },
+        {
+          "act": "click",
+          "role": "button",
+          "name": "Create"
+        },
+        {
+          "act": "expectText",
+          "text": "item is required"
+        }
+      ]
     },
     {
       "id": "TC-SEC-01",
@@ -1426,6 +1587,64 @@
         "no hardcoded key in the resources"
       ],
       "automation": "planned"
+    },
+    {
+      "id": "TC-UI-09",
+      "title": "A manager approves o-1 through the order detail page",
+      "layer": "web",
+      "mutates": true,
+      "oracle": "contract",
+      "requirements": [
+        "REQ-APR-001"
+      ],
+      "journeys": [
+        "J-03"
+      ],
+      "roles": [
+        "manager"
+      ],
+      "operations": [
+        "OP-APPROVE"
+      ],
+      "permissions": [
+        "PERM-APPROVE"
+      ],
+      "controls": [
+        "SCR-ORDER-DETAIL.approve"
+      ],
+      "fixtures": [
+        "FX-ORDERS-SEED"
+      ],
+      "expected": [
+        "the approve control approves o-1 and the detail shows the status approved",
+        "the approvals count shows 1"
+      ],
+      "automation": "implemented",
+      "steps": [
+        {
+          "act": "signIn",
+          "as": "manager"
+        },
+        {
+          "act": "goto",
+          "path": "#/orders/o-1"
+        },
+        {
+          "act": "click",
+          "role": "button",
+          "name": "Approve"
+        },
+        {
+          "act": "expectTestId",
+          "testId": "status",
+          "text": "approved"
+        },
+        {
+          "act": "expectTestId",
+          "testId": "approvals",
+          "text": "Approvals: 1"
+        }
+      ]
     }
   ],
   "designMap": {
