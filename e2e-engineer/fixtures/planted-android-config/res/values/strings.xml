@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Planted defect 13. The key is a fake value for the static scanner test. -->
+<resources>
+    <string name="app_name">Orders</string>
+    <string name="api_key">FIXTURE-KEY-0000-NOT-REAL</string>
+</resources>

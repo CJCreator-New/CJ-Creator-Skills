@@ -1,0 +1,147 @@
+{
+  "app": "planted-app",
+  "purpose": "Test fixture for the e2e-engineer. Accounts, passwords and data are fake.",
+  "run": {
+    "planted": "PLANTED=all node server.mjs",
+    "clean": "PLANTED=none node server.mjs",
+    "port": 4173
+  },
+  "roles": {
+    "admin": "approves any order in its tenant, including over 1000",
+    "manager": "approves orders up to 1000 in its tenant, not its own",
+    "staff": "creates orders; cannot approve",
+    "outsider": "manager in tenant t2; must not see tenant t1 orders"
+  },
+  "routes": {
+    "ui": ["#/login", "#/orders", "#/orders/:id"],
+    "api": [
+      "POST /api/login",
+      "GET /api/orders",
+      "POST /api/orders",
+      "GET /api/orders/:id",
+      "POST /api/orders/:id/approve",
+      "GET /health",
+      "GET /config.js"
+    ]
+  },
+  "defects": [
+    {
+      "planted": 1,
+      "flag": "dead-export-button",
+      "title": "Export button has no click handler",
+      "layer": "ui",
+      "implementedIn": "public/index.html",
+      "detector": "web-runner",
+      "expected": "dead control"
+    },
+    {
+      "planted": 2,
+      "flag": "missing-amount-validation",
+      "title": "Order creation accepts a negative or non-numeric total",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner against the contract",
+      "expected": "validation defect"
+    },
+    {
+      "planted": 3,
+      "flag": "ui-only-approve-permission",
+      "title": "Approval permission is enforced only by hiding the button",
+      "layer": "api",
+      "implementedIn": "server.mjs and public/index.html",
+      "detector": "rbac-analyst (hidden, not denied) and api-runner (direct call succeeds)",
+      "expected": "authorization defect"
+    },
+    {
+      "planted": 4,
+      "flag": "object-level-access",
+      "title": "A manager reads and approves an order in another tenant",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner (object-level probe)",
+      "expected": "critical access defect"
+    },
+    {
+      "planted": 5,
+      "flag": "approval-skips-director",
+      "title": "Orders over 1000 can be approved by a manager, so the director step is missing",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "flow-analyst gap, then e2e-runner",
+      "expected": "workflow defect"
+    },
+    {
+      "planted": 6,
+      "flag": "approval-race",
+      "title": "Two concurrent approvals of one order both succeed",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner barrier test",
+      "expected": "invariant violated: one approval per order"
+    },
+    {
+      "planted": 7,
+      "flag": "contract-total-string",
+      "title": "Order detail returns total as a string; the contract says number",
+      "layer": "api",
+      "implementedIn": "server.mjs",
+      "detector": "api-runner against openapi.json",
+      "expected": "contract defect"
+    },
+    {
+      "planted": 8,
+      "flag": "hidden-failure-recovery",
+      "title": "A failed approval is shown as a success",
+      "layer": "ui",
+      "implementedIn": "public/index.html",
+      "detector": "web-runner with request interception",
+      "expected": "recovery defect"
+    },
+    {
+      "planted": 9,
+      "flag": "responsive-table-overflow",
+      "title": "The order table is clipped below 600 pixels",
+      "layer": "ui",
+      "implementedIn": "public/index.html (planted-css)",
+      "detector": "web-runner and mobile-runner (mobile web) at each viewport",
+      "expected": "layout defect"
+    },
+    {
+      "planted": 10,
+      "flag": "unlabelled-amount-input",
+      "title": "The total input has a placeholder but no label",
+      "layer": "ui",
+      "implementedIn": "public/index.html",
+      "detector": "web-runner (axe and keyboard)",
+      "expected": "accessibility defect"
+    },
+    {
+      "planted": 11,
+      "flag": null,
+      "title": "A test shares mutable order data with another test, so it is flaky",
+      "layer": "test-suite",
+      "implementedIn": "a sample test suite, added in v0.3",
+      "detector": "orchestrator flake rule",
+      "expected": "classified flaky, not passed"
+    },
+    {
+      "planted": 12,
+      "flag": "small-touch-target",
+      "title": "The approve button is smaller than 44 pixels below 600 pixels wide",
+      "layer": "ui",
+      "implementedIn": "public/index.html (planted-css)",
+      "detector": "mobile-runner (mobile web)",
+      "expected": "accessibility defect"
+    },
+    {
+      "planted": 13,
+      "flag": null,
+      "title": "Android manifest is debuggable with cleartext allowed, and a key is hardcoded",
+      "layer": "static",
+      "implementedIn": "fixtures/planted-android-config",
+      "detector": "mobile-runner static check",
+      "expected": "security defect"
+    }
+  ],
+  "cleanControl": "fixtures/planted-app with PLANTED=none, and fixtures/clean-android-config. Both must produce zero defects."
+}

@@ -34,6 +34,14 @@
       "version": "0.3.0",
       "license": "MIT",
       "keywords": ["backend", "api", "database", "security", "user-flows", "testing", "orchestration"]
+    },
+    {
+      "name": "e2e-engineer",
+      "source": "./e2e-engineer",
+      "description": "End-to-end test engineering: discovers the app and its user journeys, gets plan approval, then verifies journeys through web, mobile web, native Android and iOS, the API and the database. v0.1 sets up intake, safety and the evidence ledger.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": ["e2e", "testing", "mobile", "browser", "api", "rbac", "orchestration"]
     }
   ]
 }
