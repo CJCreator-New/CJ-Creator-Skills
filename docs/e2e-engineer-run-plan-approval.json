@@ -1,0 +1,14 @@
+{
+  "plan": "e2e-engineer/fixtures/planted-app/plan.json",
+  "planDigest": "1565dd64f009b00aac2ee0c3ca1435abc24a327c5194d4dc1de0ece5d5aefe76",
+  "planCommit": "a60a3ee",
+  "approvedBy": "csaravana.csk@gmail.com",
+  "approvedAt": "2026-10-22",
+  "approvedVia": "user approval in the session, after v0.4",
+  "covers": "The revised fixture test plan at digest 1565dd64 (v0.4): REQ-UI-001 restated as a spec, TC-UI-01 to TC-UI-09 with steps, and the new TC-UI-09 golden path.",
+  "notCovered": [
+    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest.",
+    "Phase v0.5 (native Android and iOS, static checks, previous-version compatibility). Starting it needs a separate go-ahead.",
+    "The confirmation of REQ-UI-004. Until it is confirmed, a failure of TC-UI-04 stays needs-confirmation."
+  ]
+}
