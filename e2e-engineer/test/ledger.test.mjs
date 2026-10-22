@@ -1,35 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { emptyLedger, readLedger, recordApproval, recordBinary, recordIntake, status, writeLedger } from '../scripts/ledger.mjs';
+import { allowedLedger, fixtureLedger, NOW } from './helpers.mjs';
+import { emptyLedger, readLedger, recordBinary, recordIntake, status, writeLedger } from '../scripts/ledger.mjs';
+import { approvePlan, freezePlan } from '../scripts/plan.mjs';
 
-const NOW = '2026-10-22T00:00:00.000Z';
+const P0_JOURNEYS = ['J-01', 'J-02', 'J-03', 'J-04'];
 
-function workdir() {
-  return mkdtempSync(join(tmpdir(), 'e2e-ledger-'));
-}
-
-function allowedIntake(ledger, readiness = { web: { status: 'ready' } }) {
-  recordIntake(ledger, {
-    configName: 'test',
-    safety: { allowed: true, problems: [], resetAllowed: false, securityProbes: { allowed: false, reason: 'none' } },
-    build: { commit: 'abc', treeHash: 'def', current: true },
-    probes: {},
-    readiness,
-    targets: { web: { baseUrl: 'http://localhost:4173' } },
-    now: NOW,
-  });
-  return ledger;
-}
-
-function approved(ledger, dir) {
-  const planPath = join(dir, 'plan.md');
-  writeFileSync(planPath, 'plan body');
-  recordApproval(ledger, { planPath, approver: 'tester', approvedAt: '2026-10-22' });
+function withRuns(ledger, journeyIds) {
+  ledger.runs = journeyIds.map((journey, i) => ({ id: `R-${i}`, journey, result: 'passed' }));
   return ledger;
 }
 
@@ -48,92 +30,71 @@ test('a refused run is blocked, and every refusal reason is reported', () => {
     targets: {},
     now: NOW,
   });
-  const result = status(ledger);
-  assert.equal(result.status, 'BLOCKED');
-  assert.deepEqual(result.reasons, ['refused: db "orders" does not match allowlist.dbNamePattern']);
+  assert.deepEqual(status(ledger), {
+    status: 'BLOCKED',
+    reasons: ['refused: db "orders" does not match allowlist.dbNamePattern'],
+  });
 });
 
-test('an allowed run without an approved plan is blocked', () => {
-  const result = status(allowedIntake(emptyLedger()));
-  assert.equal(result.status, 'BLOCKED');
-  assert.deepEqual(result.reasons, ['the test plan is not approved']);
+test('an allowed run with no frozen plan is blocked, and says the plan is not frozen', () => {
+  assert.deepEqual(status(allowedLedger()), { status: 'BLOCKED', reasons: ['the test plan is not frozen and approved'] });
+});
+
+test('a frozen but unapproved plan is blocked, and says the plan is not approved', () => {
+  const ledger = fixtureLedger();
+  freezePlan(ledger, { now: NOW });
+  assert.deepEqual(status(ledger), { status: 'BLOCKED', reasons: ['the test plan is not approved'] });
+});
+
+test('an approved plan with no runs is partially tested', () => {
+  const ledger = fixtureLedger();
+  freezePlan(ledger, { now: NOW });
+  approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
+  const result = status(ledger);
+  assert.equal(result.status, 'PARTIALLY TESTED');
+  assert.deepEqual(result.reasons, P0_JOURNEYS.map((id) => `P0 journey ${id} is not verified`));
+});
+
+test('the gate passes only when every P0 journey has a passing run', () => {
+  const ledger = fixtureLedger();
+  freezePlan(ledger, { now: NOW });
+  approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
+  withRuns(ledger, P0_JOURNEYS.slice(0, 3));
+  assert.equal(status(ledger).status, 'PARTIALLY TESTED');
+  withRuns(ledger, P0_JOURNEYS);
+  assert.deepEqual(status(ledger), { status: 'PASS', reasons: [] });
 });
 
 test('a target in scope that is blocked keeps the run blocked, with the reason', () => {
-  const dir = workdir();
-  try {
-    const ledger = approved(allowedIntake(emptyLedger(), { web: { status: 'ready' }, android: { status: 'blocked', reason: 'adb is not installed' } }), dir);
-    assert.deepEqual(status(ledger), { status: 'BLOCKED', reasons: ['android is blocked: adb is not installed'] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('an approved run with no journeys is partially tested, not passed', () => {
-  const dir = workdir();
-  try {
-    const result = status(approved(allowedIntake(emptyLedger()), dir));
-    assert.deepEqual(result, { status: 'PARTIALLY TESTED', reasons: ['no journeys discovered yet'] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('a P0 journey without a passing run is partially tested', () => {
-  const dir = workdir();
-  try {
-    const ledger = approved(allowedIntake(emptyLedger()), dir);
-    ledger.journeys = [{ id: 'J-01', priority: 'P0' }];
-    assert.deepEqual(status(ledger), { status: 'PARTIALLY TESTED', reasons: ['P0 journey J-01 is not verified'] });
-    ledger.runs = [{ id: 'R-1', journey: 'J-01', result: 'passed' }];
-    assert.deepEqual(status(ledger), { status: 'PASS', reasons: [] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const ledger = fixtureLedger({ web: { status: 'ready' }, android: { status: 'blocked', reason: 'adb is not installed' } });
+  freezePlan(ledger, { now: NOW });
+  approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
+  assert.deepEqual(status(ledger), { status: 'BLOCKED', reasons: ['android is blocked: adb is not installed'] });
 });
 
 test('a failed run gives FAIL, and FAIL takes precedence over a blocked target', () => {
-  const dir = workdir();
-  try {
-    const ledger = approved(allowedIntake(emptyLedger(), { android: { status: 'blocked', reason: 'no device' } }), dir);
-    ledger.runs = [{ id: 'R-9', journey: 'J-01', result: 'failed' }];
-    assert.deepEqual(status(ledger), { status: 'FAIL', reasons: ['failed run R-9'] });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const ledger = fixtureLedger({ android: { status: 'blocked', reason: 'no device' } });
+  freezePlan(ledger, { now: NOW });
+  approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
+  ledger.runs = [{ id: 'R-9', journey: 'J-01', result: 'failed' }];
+  assert.deepEqual(status(ledger), { status: 'FAIL', reasons: ['failed run R-9'] });
 });
 
-test('the approval hash is computed from the plan file, not supplied by the caller', () => {
-  const dir = workdir();
-  try {
-    const ledger = allowedIntake(emptyLedger());
-    const planPath = join(dir, 'plan.md');
-    writeFileSync(planPath, 'plan body');
-    const approval = recordApproval(ledger, { planPath, approver: 'tester', approvedAt: '2026-10-22' });
-    assert.equal(approval.sha256, createHash('sha256').update('plan body').digest('hex'));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('a plan cannot be approved for a refused run, and an approver is required', () => {
-  const dir = workdir();
-  try {
-    const refused = emptyLedger();
-    recordIntake(refused, { configName: 't', safety: { allowed: false, problems: ['x'], resetAllowed: false }, build: {}, probes: {}, readiness: {}, targets: {}, now: NOW });
-    const planPath = join(dir, 'plan.md');
-    writeFileSync(planPath, 'plan body');
-    assert.throws(() => recordApproval(refused, { planPath, approver: 'tester', approvedAt: '2026-10-22' }), /refused run/);
-    assert.throws(() => recordApproval(allowedIntake(emptyLedger()), { planPath, approver: '  ', approvedAt: '2026-10-22' }), /approver/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test('a change to the plan after approval makes the approval stale, and the gate blocks', () => {
+  const ledger = fixtureLedger();
+  freezePlan(ledger, { now: NOW });
+  approvePlan(ledger, { approver: 'tester', approvedAt: '2026-10-22' });
+  ledger.testCases[0].expected = ['a different expected result'];
+  assert.deepEqual(status(ledger), {
+    status: 'BLOCKED',
+    reasons: ['the plan changed after it was approved; freeze and approve the new version'],
+  });
 });
 
 test('a binary is hashed by the ledger, belongs to android or ios, and replaces an earlier record of the same file', async () => {
-  const dir = workdir();
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-ledger-'));
   try {
-    const ledger = allowedIntake(emptyLedger(), { android: { status: 'ready' } });
+    const ledger = allowedLedger({ android: { status: 'ready' } });
     ledger.intake.targets.android = { packageName: 'com.example.orders' };
     const file = join(dir, 'orders.apk');
     writeFileSync(file, 'abc');
@@ -150,15 +111,27 @@ test('a binary is hashed by the ledger, belongs to android or ios, and replaces 
 });
 
 test('a ledger round-trips through its file, and an unknown schema is refused', () => {
-  const dir = workdir();
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-ledger-'));
   try {
     const path = join(dir, 'ledger.json');
-    const ledger = allowedIntake(emptyLedger());
-    writeLedger(path, ledger);
+    writeLedger(path, allowedLedger());
     assert.equal(existsSync(`${path}.tmp`), false);
-    assert.deepEqual(readLedger(path).intake.configName, 'test');
+    assert.equal(readLedger(path).intake.configName, 'fixture');
     writeFileSync(path, JSON.stringify({ schema: 99 }));
     assert.throws(() => readLedger(path), /schema 99 is not supported/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a ledger from v0.1, with no plan collections, reads with empty collections', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-ledger-'));
+  try {
+    const path = join(dir, 'ledger.json');
+    writeFileSync(path, JSON.stringify({ schema: 1, intake: null, approval: null, binaries: [], journeys: [], runs: [] }));
+    const ledger = readLedger(path);
+    assert.deepEqual(ledger.requirements, []);
+    assert.equal(ledger.planFrozen, null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

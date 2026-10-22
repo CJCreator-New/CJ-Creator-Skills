@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { validatePlan } from './traceability.mjs';
 
 const PLUGIN = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(PLUGIN, '..');
@@ -68,6 +69,11 @@ try {
   openapiParses = false;
 }
 check(openapiParses, 'openapi.json must parse');
+
+// The worked example must pass the plan check it demonstrates: no errors, and the gaps it is meant to show.
+const planCheck = validatePlan(readJson(join(fixtureDir, 'plan.json')));
+check(planCheck.errors.length === 0, `fixtures/planted-app/plan.json has plan errors: ${planCheck.errors.join('; ')}`);
+check(planCheck.gaps.length === 3, 'fixtures/planted-app/plan.json should show its three intentional gaps');
 
 const marketplace = readJson(join(ROOT, '.claude-plugin/marketplace.json'));
 const entry = marketplace.plugins.find((plugin) => plugin.name === 'e2e-engineer');

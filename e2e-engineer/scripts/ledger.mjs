@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // The ledger for one e2e-engineer run. It is the only writer of the run's state. It computes the
-// hashes it records (the native binary and the approved plan) itself, so a caller cannot supply
-// them. Run state lives in <repo>/.claude/e2e-engineer/ledger.json, which the target repo ignores.
+// hashes it records (the native binary and the frozen plan) itself, so a caller cannot supply them.
+// Run state lives in <repo>/.claude/e2e-engineer/ledger.json, which the target repo ignores.
 
-import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describeBinary } from './binary.mjs';
+import { PLAN_COLLECTIONS, addItem, approvePlan, freezePlan, loadPlan, planDigest } from './plan.mjs';
 
 export const SCHEMA = 1;
 export const STATUSES = ['PASS', 'PASS WITH ACCEPTED RISKS', 'FAIL', 'BLOCKED', 'PARTIALLY TESTED'];
@@ -17,14 +17,15 @@ export function defaultLedgerPath(root) {
 }
 
 export function emptyLedger() {
-  return { schema: SCHEMA, intake: null, approval: null, binaries: [], journeys: [], runs: [] };
+  const plan = Object.fromEntries(PLAN_COLLECTIONS.map((key) => [key, []]));
+  return { schema: SCHEMA, intake: null, designMap: null, planFrozen: null, approval: null, binaries: [], runs: [], defects: [], ...plan };
 }
 
 export function readLedger(path) {
   if (!existsSync(path)) return emptyLedger();
   const ledger = JSON.parse(readFileSync(path, 'utf8'));
   if (ledger.schema !== SCHEMA) throw new Error(`ledger schema ${ledger.schema} is not supported (expected ${SCHEMA})`);
-  return ledger;
+  return { ...emptyLedger(), ...ledger };
 }
 
 // Writes through a temporary file, so an interrupted write cannot leave a half-written ledger.
@@ -33,10 +34,6 @@ export function writeLedger(path, ledger) {
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(ledger, null, 2)}\n`);
   renameSync(tmp, path);
-}
-
-export function planHash(planPath) {
-  return createHash('sha256').update(readFileSync(planPath)).digest('hex');
 }
 
 // Records what intake found. A refused run is recorded too, so the status can say why nothing ran.
@@ -66,16 +63,9 @@ export async function recordBinary(ledger, { target, file, versionName, buildNum
   return entry;
 }
 
-// Records the approval of the test plan, against the plan's hash computed here.
-export function recordApproval(ledger, { planPath, approver, approvedAt }) {
-  if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('a plan cannot be approved for a refused run');
-  if (typeof approver !== 'string' || approver.trim() === '') throw new Error('an approver name or identifier is required');
-  ledger.approval = { planPath, sha256: planHash(planPath), approver, approvedAt };
-  return ledger.approval;
-}
-
 // Gate status with the precedence in the plan (G19): a failed mandatory gate gives FAIL; an unmet or
 // blocked mandatory gate gives BLOCKED; work that has not run gives PARTIALLY TESTED; otherwise PASS.
+// An approval counts only for the plan it was given for. A later change to the plan makes it stale.
 export function status(ledger) {
   const reasons = [];
   const failed = ledger.runs.filter((run) => run.result === 'failed');
@@ -85,17 +75,23 @@ export function status(ledger) {
   if (!ledger.intake.safety.allowed) {
     return { status: 'BLOCKED', reasons: ledger.intake.safety.problems.map((p) => `refused: ${p}`) };
   }
-  if (!ledger.approval) return { status: 'BLOCKED', reasons: ['the test plan is not approved'] };
+  if (!ledger.approval) {
+    const reason = ledger.planFrozen ? 'the test plan is not approved' : 'the test plan is not frozen and approved';
+    return { status: 'BLOCKED', reasons: [reason] };
+  }
+  if (ledger.approval.planHash !== planDigest(ledger)) {
+    return { status: 'BLOCKED', reasons: ['the plan changed after it was approved; freeze and approve the new version'] };
+  }
 
   for (const [target, readiness] of Object.entries(ledger.intake.readiness)) {
     if (readiness.status === 'blocked') reasons.push(`${target} is blocked: ${readiness.reason}`);
   }
   if (reasons.length > 0) return { status: 'BLOCKED', reasons };
 
+  if (ledger.journeys.length === 0) return { status: 'PARTIALLY TESTED', reasons: ['no journeys discovered yet'] };
   const p0 = ledger.journeys.filter((journey) => journey.priority === 'P0');
   const verified = new Set(ledger.runs.filter((run) => run.result === 'passed').map((run) => run.journey));
   const unverified = p0.filter((journey) => !verified.has(journey.id));
-  if (ledger.journeys.length === 0) return { status: 'PARTIALLY TESTED', reasons: ['no journeys discovered yet'] };
   if (unverified.length > 0) {
     return { status: 'PARTIALLY TESTED', reasons: unverified.map((j) => `P0 journey ${j.id} is not verified`) };
   }
@@ -118,31 +114,41 @@ function parseFlags(args) {
 
 async function main(argv) {
   const [command, ledgerPath, ...rest] = argv;
+  if (!command || !ledgerPath) {
+    throw new Error('usage: ledger.mjs <status|load|add|design|freeze|approve|binary> <ledger.json> [...]');
+  }
   const { flags, positional } = parseFlags(rest);
   const now = new Date().toISOString();
-  if (!command || !ledgerPath) {
-    throw new Error('usage: ledger.mjs <status|approve|binary> <ledger.json> [...]');
-  }
   if (command === 'status') {
     console.log(JSON.stringify(status(readLedger(ledgerPath)), null, 2));
     return;
   }
+
   const ledger = readLedger(ledgerPath);
-  if (command === 'approve') {
-    const [planPath] = positional;
-    const approval = recordApproval(ledger, { planPath, approver: flags.approver, approvedAt: flags.date || now.slice(0, 10) });
-    writeLedger(ledgerPath, ledger);
-    console.log(JSON.stringify(approval, null, 2));
-    return;
-  }
-  if (command === 'binary') {
+  let output;
+  if (command === 'load') {
+    const [file] = positional;
+    output = loadPlan(ledger, JSON.parse(readFileSync(resolve(file), 'utf8')));
+  } else if (command === 'add') {
+    const [kind, file] = positional;
+    output = addItem(ledger, kind, JSON.parse(readFileSync(resolve(file), 'utf8')));
+  } else if (command === 'design') {
+    const [file] = positional;
+    if (!ledger.intake || !ledger.intake.safety.allowed) throw new Error('a design map cannot be recorded for a refused run');
+    ledger.designMap = JSON.parse(readFileSync(resolve(file), 'utf8'));
+    output = { designMap: ledger.designMap.source };
+  } else if (command === 'freeze') {
+    output = freezePlan(ledger, { now });
+  } else if (command === 'approve') {
+    output = approvePlan(ledger, { approver: flags.approver, approvedAt: flags.date || now.slice(0, 10) });
+  } else if (command === 'binary') {
     const [target, file] = positional;
-    const entry = await recordBinary(ledger, { target, file, versionName: flags.version, buildNumber: flags.build, now });
-    writeLedger(ledgerPath, ledger);
-    console.log(JSON.stringify(entry, null, 2));
-    return;
+    output = await recordBinary(ledger, { target, file, versionName: flags.version, buildNumber: flags.build, now });
+  } else {
+    throw new Error(`unknown command: ${command}`);
   }
-  throw new Error(`unknown command: ${command}`);
+  writeLedger(ledgerPath, ledger);
+  console.log(JSON.stringify(output, null, 2));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
