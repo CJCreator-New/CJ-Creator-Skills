@@ -20,6 +20,10 @@ import { validateSteps } from './web-steps.mjs';
 import { redactBody, redactHeaders, redactString, redactValue } from './redact.mjs';
 
 export const STEP_TIMEOUT_MS = 5000;
+// A presence check runs after the page has settled, so a passing check finds its element at once. A
+// shorter budget means a missing element fails in seconds, not after the full step timeout. Actions and
+// the waits that follow them (downloads, responses, navigation) keep STEP_TIMEOUT_MS.
+export const PRESENCE_TIMEOUT_MS = 2000;
 
 // The page-side checks are self-contained, because Playwright sends them to the page as text.
 
@@ -124,10 +128,10 @@ export async function runStep(step, { page, base, ctx }) {
       await page.getByRole(step.role, { name: step.name, exact: true }).click();
       return;
     case 'expectVisible':
-      await page.getByRole(step.role, { name: step.name, exact: true }).first().waitFor({ state: 'visible' });
+      await page.getByRole(step.role, { name: step.name, exact: true }).first().waitFor({ state: 'visible', timeout: PRESENCE_TIMEOUT_MS });
       return;
     case 'expectText':
-      await page.getByText(step.text).first().waitFor({ state: 'visible' });
+      await page.getByText(step.text).first().waitFor({ state: 'visible', timeout: PRESENCE_TIMEOUT_MS });
       return;
     case 'expectUrl':
       await waitForHash(page, step.contains);
@@ -139,7 +143,7 @@ export async function runStep(step, { page, base, ctx }) {
           return Boolean(el && el.textContent.includes(text));
         },
         [step.testId, step.text],
-        { timeout: STEP_TIMEOUT_MS },
+        { timeout: PRESENCE_TIMEOUT_MS },
       );
       return;
     case 'expectDownload': {
