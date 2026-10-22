@@ -75,6 +75,22 @@ export const TASK_STATUSES = ['planned', 'in-progress', 'done', 'blocked'];
 export const JOURNEY_STATUSES = ['planned', 'implemented'];
 export const SCOPES = ['focused', 'regression', 'e2e', 'full'];
 export const REVIEW_VERDICTS = ['passed', 'findings-open', 'rejected'];
+export const MODES = ['fast', 'standard', 'high-assurance'];
+export const REVIEWERS = ['release-reviewer', 'security-reviewer'];
+export const DETECTED_IN = [
+  'requirements',
+  'journeys',
+  'contract',
+  'schema',
+  'implementation',
+  'integration',
+  'frontend',
+  'e2e',
+  'review',
+  'release',
+];
+// Gaps detected at these points were missed until integration or later.
+export const AFTER_INTEGRATION = ['integration', 'frontend', 'e2e', 'review', 'release'];
 
 const DEFAULTS = {
   requirements: { status: 'open' },
@@ -97,12 +113,24 @@ export const ledgerPath = (projectDir) => join(stateDir(projectDir), 'ledger.jso
 export const ownershipPath = (projectDir) => join(stateDir(projectDir), 'ownership.json');
 
 export function emptyLedger() {
-  return { counters: {}, requirements: [], journeys: [], interactions: [], gaps: [], decisions: [], tasks: [], evidence: [] };
+  return {
+    counters: {},
+    project: {},
+    requirements: [],
+    journeys: [],
+    interactions: [],
+    gaps: [],
+    decisions: [],
+    tasks: [],
+    evidence: [],
+  };
 }
 
 export function loadLedger(projectDir) {
   if (!existsSync(ledgerPath(projectDir))) return emptyLedger();
-  return JSON.parse(readFileSync(ledgerPath(projectDir), 'utf8'));
+  const ledger = JSON.parse(readFileSync(ledgerPath(projectDir), 'utf8'));
+  ledger.project ??= {};
+  return ledger;
 }
 
 export function saveLedger(projectDir, ledger) {
@@ -159,6 +187,10 @@ export function addItem(ledger, section, data) {
 export function setItem(ledger, section, id, patch) {
   if (section === 'evidence') throw new Error('evidence is recorded by run or review, not set');
   if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('set needs a JSON object');
+  if (section === 'project') {
+    Object.assign(ledger.project, patch);
+    return;
+  }
   if ('id' in patch && patch.id !== id) throw new Error('an id cannot be changed');
   if (section === 'gaps' && 'status' in patch) throw new Error('gap status changes only through the gap command');
   Object.assign(findRequired(ledger, section, id), patch);
@@ -291,6 +323,9 @@ export function validateLedger(ledger) {
     if (typeof g.title !== 'string' || g.title === '') fail(`${g.id}: title is required`);
     if (!SEVERITIES.includes(g.severity)) fail(`${g.id}: severity must be Critical, High, Medium or Low`);
     if (!CATEGORIES.includes(g.category)) fail(`${g.id}: category is not in the allowed list`);
+    if (g.detectedIn !== undefined && !DETECTED_IN.includes(g.detectedIn)) {
+      fail(`${g.id}: detectedIn must be one of ${DETECTED_IN.join(', ')}`);
+    }
     const stage = GAP_LIFECYCLE.indexOf(g.status);
     if (stage < 0) fail(`${g.id}: status must be one of the gap lifecycle steps`);
     if (stage >= GAP_LIFECYCLE.indexOf('Assigned') && !g.owner) fail(`${g.id}: owner is required from Assigned onwards`);
@@ -329,8 +364,18 @@ export function validateLedger(ledger) {
     } else if (e.kind === 'review') {
       if (!REVIEW_VERDICTS.includes(e.verdict)) fail(`${e.id}: verdict must be one of ${REVIEW_VERDICTS.join(', ')}`);
       if (!('treeHash' in e)) fail(`${e.id}: treeHash is required`);
+      if (e.reviewer !== undefined && !REVIEWERS.includes(e.reviewer)) {
+        fail(`${e.id}: reviewer must be one of ${REVIEWERS.join(', ')}`);
+      }
     } else {
       fail(`${e.id}: kind must be run or review`);
+    }
+  }
+  if (ledger.project !== undefined) {
+    if (typeof ledger.project !== 'object' || Array.isArray(ledger.project)) {
+      fail('project must be an object');
+    } else if (ledger.project.mode !== undefined && !MODES.includes(ledger.project.mode)) {
+      fail(`project.mode must be one of ${MODES.join(', ')}`);
     }
   }
   return errors;
@@ -376,11 +421,13 @@ export function recordRun(ledger, ctx, { name, scope, command, cwd, journeyIds =
   return entry;
 }
 
-export function recordReview(ledger, ctx, { verdict, report = null, notes = '', now = () => new Date() }) {
+export function recordReview(ledger, ctx, { verdict, reviewer = 'release-reviewer', report = null, notes = '', now = () => new Date() }) {
   if (!REVIEW_VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${REVIEW_VERDICTS.join(', ')}`);
+  if (!REVIEWERS.includes(reviewer)) throw new Error(`reviewer must be one of ${REVIEWERS.join(', ')}`);
   const entry = {
     id: nextId(ledger, 'evidence'),
     kind: 'review',
+    reviewer,
     verdict,
     report,
     notes,
@@ -447,6 +494,13 @@ export function releaseStatus(ledger, ctx) {
   if (!review) notReady.push('no independent review recorded');
   else if (review.verdict !== 'passed') notReady.push(`independent review ${review.id} is ${review.verdict}`);
   else if (!reviewIsCurrent(review, ctx)) notReady.push(`independent review ${review.id} is stale: the tree changed after it`);
+
+  if (ledger.project?.mode === 'high-assurance') {
+    const security = [...reviews].reverse().find((e) => e.reviewer === 'security-reviewer');
+    if (!security || security.verdict !== 'passed' || !reviewIsCurrent(security, ctx)) {
+      notReady.push('high-assurance mode needs a current passing security review');
+    }
+  }
 
   const status = blockers.length
     ? 'Blocked'
@@ -520,8 +574,14 @@ export function main(argv, env = process.env) {
       return ok(item.id);
     }
     case 'set': {
-      const [section, id, raw] = args;
+      const [section, ...rest] = args;
       const ledger = loadLedger(projectDir);
+      if (section === 'project') {
+        setItem(ledger, section, null, parseJson(rest[0]));
+        commit(projectDir, ledger);
+        return ok('project updated');
+      }
+      const [id, raw] = rest;
       setItem(ledger, section, id, parseJson(raw));
       commit(projectDir, ledger);
       return ok(`${id} updated`);
@@ -548,11 +608,12 @@ export function main(argv, env = process.env) {
     }
     case 'review': {
       const [verdict, ...flags] = args;
-      const opts = { verdict, report: null, notes: '' };
+      const opts = { verdict, report: null, notes: '', reviewer: 'release-reviewer' };
       for (let i = 0; i < flags.length; i += 2) {
         if (flags[i + 1] === undefined) throw new Error(`${flags[i]} needs a value`);
         if (flags[i] === '--report') opts.report = flags[i + 1];
         else if (flags[i] === '--notes') opts.notes = flags[i + 1];
+        else if (flags[i] === '--reviewer') opts.reviewer = flags[i + 1];
         else throw new Error(`unknown review option: ${flags[i]}`);
       }
       const ledger = loadLedger(projectDir);

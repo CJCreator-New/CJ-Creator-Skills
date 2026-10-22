@@ -71,6 +71,46 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs" finish
 
 `finish` ends a run only at Complete.
 
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `ledger.mjs` | the records, the gap lifecycle, recorded runs and reviews, validation, release status |
+| `route.mjs` | the model tier for one dispatch, with the reasons; the orchestrator passes it to the Agent tool |
+| `telemetry.mjs` | stage time, dispatches by agent and model, reported tokens, failures, correction rounds, and a comparison of two runs |
+| `contract.mjs` | checks an OpenAPI 3 document against the API each journey step names |
+| `report.mjs` | writes the operational dashboard (HTML) and the final report (Markdown) from the ledger and telemetry |
+| `view.mjs` | the view both renderings read, so they cannot disagree |
+
+### Model routing
+
+`route.mjs` maps the kind of work to a tier: mechanical work to haiku, implementation to sonnet, and judgment (authorization, security, migrations, concurrency, review) to opus. Risk, ambiguity and repeated failure raise a tier. Nothing lowers one.
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/scripts/route.mjs" authorization --risk high
+{ "model": "opus", "reasons": ["authorization is opus-class work", "high risk runs on opus"] }
+```
+
+The routing takes effect only when the orchestrator passes the model to the Agent tool. Each agent's frontmatter model is the fallback.
+
+### Telemetry
+
+`telemetry.mjs` records what the harness reports and nothing else. Token counts appear only when `tokens` is recorded, and the report shows them as unavailable otherwise. `compare` sets two runs side by side. It reports the numbers, and it is meaningful only for runs of the same mode and scope. There is no baseline yet, so one run does not show an improvement.
+
+### Dashboard and report
+
+`report.mjs dashboard` writes a self-contained HTML page: release readiness and its reasons, the plan with blocked tasks, the journey explorer with each journey's state, the interaction map, the gap table with severity and category filters, decisions, the recorded runs and reviews, and telemetry. It has no external resources, and user text is escaped.
+
+`report.mjs report` writes the final report in the sections the specification asks for. Every figure comes from the ledger. The orchestrator adds narrative only where the ledger has none.
+
+### OpenAPI check
+
+`contract.mjs check <openapi.json>` checks that every API a journey step names exists in the document, that each operation documents a success response and a client-error response, that state-changing operations declare security (or `x-public: true`), and that operation IDs are unique. It does not call the service, and it does not generate the document. Generation depends on the framework the project already uses.
+
+### Development modes
+
+`project.mode` is `fast`, `standard` or `high-assurance`. High-assurance requires a current passing review by `security-reviewer` before the release status can be Complete. The other modes differ in how much the orchestrator verifies, as the skill describes. None of them lowers the checks the ledger enforces.
+
 ## Agents
 
 | Agent | Model | Writes | Role |
@@ -109,15 +149,16 @@ The orchestrator is the main session running the `backend-build` skill. It owns 
 - **Duplicated code.** `ownership.mjs` and the ownership rules are copies of the `frontend-engineer` plugin's, because each plugin is installed on its own and cannot import from another.
 - **No live verification here.** The plugin itself is tested. It has not been run against a real backend, database or external service. Live integrations must be verified in an environment with credentials, and the report must say so when they were not.
 
-## What this does not yet include
+## Example
 
-Some of what the specification describes is not built:
+`examples/example-run.md` is a captured run of one feature in a scratch repository: a journey blocked by an open decision, a gap moved through its lifecycle, recorded runs, a review, the Complete status, and the generated report. Its test commands are stand-ins, and the document says so.
 
-- **Operational dashboard.** There is no UI. The ledger's `status` and `release` commands print the state.
-- **Telemetry.** There is no token or stage-timing record. `frontend-engineer` has one; the same design can be applied here.
-- **Adaptive model routing beyond per-agent models.** Each agent's model is fixed in its frontmatter.
-- **Automatic OpenAPI generation.** The api-architect writes contract files and the OpenAPI document by hand, using whatever the repository already uses.
-- **Baseline measurement.** There is no comparison of token use or elapsed time against earlier runs.
+## Not verified here
+
+- **No run against a real application.** The scripts are tested and exercised in scratch repositories. A real backend, database and external service have not been used. Live integrations need credentials and an environment that the plugin cannot assume.
+- **Token counts.** No run has reported token usage yet, so none appear in any output here.
+- **Baseline.** Comparing efficiency needs several runs of the same mode and scope. None exist yet.
+- **OpenAPI generation** is left to the project's own tooling. The check validates the document, not the code behind it.
 
 ## Development
 

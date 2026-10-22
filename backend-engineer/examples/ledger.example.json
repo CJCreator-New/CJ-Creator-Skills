@@ -1,6 +1,13 @@
 {
   "_comment": "Illustrative ledger for one feature: a manager can approve a submitted expense report. Copy to .claude/backend-engineer/ledger.json only to see the shape; the orchestrator builds the real ledger with ledger.mjs.",
   "counters": { "R": 1, "J": 1, "I": 2, "G": 1, "D": 1, "T": 1, "E": 0 },
+  "project": {
+    "mode": "standard",
+    "stack": { "frontend": "React and TypeScript", "backend": "Node.js and Express", "database": "PostgreSQL" },
+    "capabilities": { "testDatabase": true, "runnableBackend": false, "browser": false, "externalServices": [] },
+    "limitations": ["No browser is available, so visual and E2E checks are not run."],
+    "deployNotes": []
+  },
   "requirements": [
     {
       "id": "R-01",

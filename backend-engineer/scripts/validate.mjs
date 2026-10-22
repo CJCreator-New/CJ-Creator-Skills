@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { READ_ONLY_AGENTS } from '../hooks/guard.mjs';
 import { validateLedger } from './ledger.mjs';
+import { checkContract } from './contract.mjs';
 
 const PLUGIN = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -139,6 +140,10 @@ const example = readJson(join(PLUGIN, 'examples/ledger.example.json'));
 if (example) {
   const { _comment, ...ledger } = example;
   for (const message of validateLedger(ledger)) fail(`examples/ledger.example.json: ${message}`);
+  const openapi = readJson(join(PLUGIN, 'examples/openapi.example.json'));
+  if (openapi) {
+    for (const message of checkContract(ledger, openapi)) fail(`examples/openapi.example.json: ${message}`);
+  }
 }
 
 // 7. No secret-bearing files inside the plugin

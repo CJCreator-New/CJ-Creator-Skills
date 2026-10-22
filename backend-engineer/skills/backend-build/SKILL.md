@@ -16,7 +16,7 @@ Read the reference files once, at the start of the phase that needs them, from t
 - `contracts-data-security.md`: Phases 4 to 6. Contracts, schema, transactions, security and integrations.
 - `gaps-verification-release.md`: Phases 8 to 11. Checkpoints, the gap lifecycle, evidence, release status and the report.
 
-In this skill, `LEDGER` means `node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs"`. Every record, check result, review and end-of-run step goes through it.
+In this skill, `LEDGER` means `node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs"`. Every record, check result, review and end-of-run step goes through it. The same pattern gives `ROUTE` (`scripts/route.mjs`), `TELEMETRY` (`scripts/telemetry.mjs`), `CONTRACT` (`scripts/contract.mjs`) and `REPORT` (`scripts/report.mjs`).
 
 Hard rules:
 - Never record a check result by hand. `LEDGER run` executes the command and stores the result. `LEDGER review` records the reviewer's verdict.
@@ -24,6 +24,7 @@ Hard rules:
 - Never close a gap, mark a journey verified, or report a release status from an agent's claim. Use the commands, which check the evidence.
 - Never write secrets, credentials or real `.env` values. Never read them either.
 - Never edit a committed migration. Add a new one.
+- Choose each dispatch's model with `ROUTE`, and pass its answer to the Agent tool's model parameter. Do not dispatch without it.
 - Do not commit, push or open a PR unless the user asks.
 
 ## Modes
@@ -36,11 +37,24 @@ Pick the mode in Phase 0. It sets how much is verified, never whether the essent
 | Standard | a new feature or a new journey | the full flow analysis, contract-first implementation, unit, integration, contract and E2E tests, independent review of material changes |
 | High-assurance | payments, permissions, personal data, compliance, or a shared transaction boundary | deeper threat and business-rule analysis, security review of every changed operation, concurrency and recovery tests, migration verification, and the review is required |
 
+High-assurance mode also requires a current passing review by `security-reviewer`, recorded with `LEDGER review passed --reviewer security-reviewer`. The release status says so until it is recorded.
+
+## Dispatching agents
+
+For every Agent call:
+1. Run `ROUTE <kind> --risk <low|medium|high> [--ambiguous] [--retries n]`. Pass the printed `model` as the Agent tool's model parameter. The kinds are listed in `scripts/route.mjs`. Routing only raises a tier, never lowers it.
+2. Record the dispatch: `TELEMETRY dispatch <agent> --model <model>`.
+3. When an agent returns `blocked`, or its output is unusable, record it with `TELEMETRY failure <agent> <blocked|invalid-output|timeout|tool-error|model-error>`. Retry with `--retries` set to the number of failed attempts, so the route raises the tier.
+4. Record each correction round with `TELEMETRY iteration <name>`.
+5. Bracket each phase with `TELEMETRY start <phase>` and `TELEMETRY end <phase>`.
+
+Record a token count only when the harness reports one, with `TELEMETRY tokens <agent> <input> <output>`. Otherwise leave it out. The report shows tokens as unavailable, and that is correct.
+
 ## Phase 0: Preflight
 
 1. `git status --short` and `git branch --show-current`. Record existing uncommitted changes and never overwrite them. If on the default branch and the request changes code, ask which branch to use.
 2. Read project instructions: root `CLAUDE.md`, `AGENTS.md`, and nested `CLAUDE.md` files in the directories the request touches.
-3. `LEDGER init`. Then `LEDGER status` to confirm the ledger reads.
+3. `LEDGER init`. Then `LEDGER set project '<json>'` with the mode, the stack (frontend, backend, database), the capabilities from step 5, and the limitations you already know. Then `LEDGER status` to confirm the ledger reads.
 4. Dispatch **repo-intel** for the frontend and the backend. Record its commands, stack, and any unfinished work.
 5. Probe capabilities and record each as available or unavailable. Never assume one:
    - a test database and the migration command,
@@ -78,13 +92,15 @@ Use repo-intel's output and the requirement documents the user supplied. Note th
 1. Dispatch **api-architect** for the operations the journeys need. It writes the contract files. Its output also goes into the flow matrix: each operation names its journey.
 2. Dispatch **db-integrity** after the contract is approved. Its schema must support the contract's queries, transitions and constraints. Its migrations are new files.
 3. Review each contract against its journeys. Look for a missing operation, a missing failure response, a transition with no operation, an authorization gap, or an operation with no idempotency where a repeat would cause harm. Record each as a gap.
-4. Checkpoint B and C: approve the contract and schema only when the gaps are recorded and the critical ones are resolved. Dependent implementation does not start before this.
+4. Run `CONTRACT check <openapi.json>` on the OpenAPI document. It checks that every API a journey step names exists in the document, that each operation documents a success and a client-error response, that each state-changing operation declares security (or `x-public: true`), and that operation IDs are unique. Record each problem as a gap with `detectedIn: "contract"`.
+5. Checkpoint B and C: approve the contract and schema only when the gaps are recorded and the critical ones are resolved. Dependent implementation does not start before this.
 
 ## Phase 5: Implement in parallel where safe
 
 1. Dispatch **backend-implementer** and **integration-engineer** in one message for tasks whose files do not overlap. Give each agent only its task, its contract section, its schema section, the journeys it serves, its files and its acceptance criteria.
 2. Record each handoff request as a task or a gap. Assign it to its owner. Never let two agents edit the same file.
 3. Record each agent's result. A result with a blocker or a contract deviation is a gap until it is resolved.
+4. When a task's work is in place, set its status: `LEDGER set tasks T-01 '{"status":"done"}'`. The dashboard's plan and the report's implementation section read this status.
 
 ## Phase 6: Verify components
 
@@ -117,11 +133,13 @@ For each gap, in order, following `gaps-verification-release.md`:
 ## Phase 10: Independent review
 
 1. Dispatch **release-reviewer** on the final integrated state, with the ledger status, the requirements and journeys, and the changed files. It did not write the code.
-2. Record its verdict with `LEDGER review <passed|findings-open|rejected> --report <path> --notes "<summary>"`. Run `LEDGER review` only after the reviewer returns; the review is recorded against the tree as it is at that time.
+2. Record its verdict with `LEDGER review <passed|findings-open|rejected> --reviewer release-reviewer --report <path> --notes "<summary>"`. Run `LEDGER review` only after the reviewer returns; the review is recorded against the tree as it is at that time. In high-assurance mode, also dispatch **security-reviewer** on the final state and record its verdict with `--reviewer security-reviewer`.
 3. Address each blocking finding, then run the review again if the tree changed.
 
 ## Phase 11: Deliver
 
 1. Run `LEDGER release`. Its status is computed from the evidence. Report that status, not a status you prefer.
+1a. Run `REPORT dashboard` and `REPORT report`. Both are written under `.claude/backend-engineer/` and read the same ledger and telemetry. Show the user the dashboard path. Do not hand-edit either file.
+1b. Run `TELEMETRY summary`. To judge efficiency, compare with an earlier run of the same mode and scope using `TELEMETRY compare <before.jsonl> <after.jsonl>`. Report the numbers. Do not claim an improvement from one run; there is no baseline until several comparable runs exist.
 2. Run `LEDGER finish` only when the status is Complete. It refuses otherwise, and it removes `ownership.json`. If the run stops early, run `LEDGER abort` so the guard stops blocking edits.
 3. Return the final report in the format in `gaps-verification-release.md`. Include the migration, configuration and rollback notes, the decisions the user still has to make, and the verification that was not run.
