@@ -24,7 +24,7 @@ A step is one user action or one check. Each finds its control the way a user do
 | `expectResponse` | Clicks a control and waits for the request it sends to this method and path | The response has this status |
 | `check` | e2e test cases only: runs an http or db check from `backend-verification.md` | The check passes |
 
-The timeout for each step is five seconds. A step that does not pass within it is a failure, and the message says what did not happen.
+The timeout for each step is five seconds. A presence check (`expectVisible`, `expectText`, `expectTestId`) allows two seconds, because it runs after the page has settled. A step that does not pass within its timeout is a failure, and the message says what did not happen.
 
 ## Viewports
 
