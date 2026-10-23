@@ -9,7 +9,7 @@
       "name": "forge",
       "source": "./forge",
       "description": "Map, enhance, plan, approve, build with parallel subagents, test, hand off. Ponytail discipline, token accounting, live gamified dashboard. Works in any project.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "license": "MIT",
       "keywords": ["workflow", "subagents", "planning", "token-efficiency", "dashboard"]
     },
