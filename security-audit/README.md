@@ -124,5 +124,5 @@ claude plugin validate security-audit
 - Static analysis by reading code can miss issues that depend on runtime data, deployment, or infrastructure
   outside the repository.
 - Subagents cannot spawn subagents. The main session dispatches all specialists.
-- Model choice is inherited from the session for every specialist, so the cost of a run follows the
+- Models are set per specialist, from the blind comparison: `secrets-scanner` on Haiku, `access-control-reviewer` and `input-handler-reviewer` on Sonnet. `dependency-auditor` and `config-reviewer` were not in the comparison and still inherit the session model.
   session's model.
