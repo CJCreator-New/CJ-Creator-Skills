@@ -5,7 +5,10 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import forge_lib as F  # noqa: E402
+# Only the root lookup is imported up front. forge_lib is imported once a Forge run is found, so hook
+# calls in ordinary sessions do not pay for it. F is set in main() before any handler runs.
+import forge_root as R  # noqa: E402
+F = None
 
 PONYTAIL_AGENTS = ("enhancer", "planner", "dev", "docs")
 
@@ -180,13 +183,15 @@ HANDLERS = {"session-start": session_start, "subagent-start": subagent_start, "p
 
 
 def main():
+    global F
     try:
         ev = sys.argv[1]
         raw = sys.stdin.read()
         data = json.loads(raw) if raw.strip() else {}
-        root = F.find_root(data.get("cwd"))
+        root = R.find_root(data.get("cwd"))
         if not root:
             return
+        import forge_lib as F  # noqa: E402
         st = F.load(root)
         if st is None:
             return
