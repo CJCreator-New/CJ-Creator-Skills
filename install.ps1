@@ -72,7 +72,7 @@ function Install-Claude {
   }
   Invoke-Native 'marketplace add' { claude plugin marketplace add $Src }
   Invoke-Native 'marketplace update' { claude plugin marketplace update $Marketplace }
-  foreach ($plugin in 'forge', 'repo-orchestrator', 'frontend-engineer', 'backend-engineer', 'e2e-engineer') {
+  foreach ($plugin in 'forge', 'repo-orchestrator', 'frontend-engineer', 'backend-engineer', 'e2e-engineer', 'security-audit') {
     Invoke-Native "install $plugin" { claude plugin install "$plugin@$Marketplace" }
     Invoke-Native "update $plugin" { claude plugin update "$plugin@$Marketplace" }
   }
