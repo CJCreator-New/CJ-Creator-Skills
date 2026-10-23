@@ -47,7 +47,7 @@ The reference files in `references/` say how each stage works. Read the one a st
    A refused run exits with status 1 and lists the problems. Report them. Do not work around them. Stop here.
 3. Check the Figma connector through the connector list at intake. If it is connected, the design source is `figma`. Otherwise use exported images or tokens if the repo has them, and `none` if it does not. Record the choice in the design map.
 4. Dispatch the analysts. Each one is dispatched with the model `route` returns for its tier, and each is read-only:
-   - `repo-intel` maps the repository. Its output stays in the run notes.
+   - `repo-intel` maps the repository. First run `node "${CLAUDE_PLUGIN_ROOT}/scripts/repo-map.mjs" status <repo root>`, and dispatch it only for the paths in `stale` and when `unmapped` is above zero. Store its entries block with `repo-map.mjs write`. Its output stays in the run notes.
    - `flow-analyst` reconstructs the journeys, their branches and the requirements behind them.
    - `rbac-analyst` records the roles, the permissions and the outcome for every role.
    - `ux-analyst` inventories the screens and controls, their states, and their design references.

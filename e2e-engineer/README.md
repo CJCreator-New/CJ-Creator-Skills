@@ -54,6 +54,7 @@ agents/
   triage.md                       severity, owner, root cause, duplicates, flaky causes (read-only)
 scripts/
   intake.mjs                      intake: safety, build identity, probes, ledger, active marker
+  repo-map.mjs                    shared repo map at .claude/repo-map/map.json: status and write (copy of backend-engineer's)
   safety.mjs                      target allowlist, production refusal, authorization, reset rules
   probe.mjs                       tool and device readiness, per target
   binary.mjs                      SHA-256 identity of APK, AAB and IPA files

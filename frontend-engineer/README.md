@@ -72,6 +72,7 @@ frontend-engineer/
 │   ├── gates.mjs            gate checks, recorded check runs, iteration limit, finish and abort
 │   ├── ownership.mjs        path rules shared by the guard and the gate checks
 │   ├── telemetry.mjs        stage timings, reported tokens, defects, iterations, summary
+│   ├── repo-map.mjs         shared repo map at .claude/repo-map/map.json: status and write (copy of backend-engineer's)
 │   └── validate.mjs         structure checks for the plugin and its marketplace entry
 ├── examples/config.example.json
 └── test/                    guard, gates, telemetry and structure tests

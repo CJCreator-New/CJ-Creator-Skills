@@ -25,3 +25,5 @@ Mobile: <target, project file, identifier, flags observed>
 Existing tests: <suite, command if declared, file location>
 Unknowns: <what the map could not establish>
 ```
+
+After the shape above, end your reply with one fenced `json` block: `{"entries": [...]}`. Give one object per file you read, with `path` (repository-relative), `area`, `summary` (one line), `exports` (the names a change would import), `status` (`verified` or `unverified`) and `mappedBy` set to `e2e-engineer`. Include only files you read. Never include a secret-looking file, and never a value.

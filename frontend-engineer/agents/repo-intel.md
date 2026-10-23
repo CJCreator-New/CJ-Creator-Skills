@@ -31,3 +31,5 @@ Duplicates or conflicts: <list or "none found">
 Indexed at SHA: <git rev-parse HEAD>
 Unverified: <list or "none">
 ```
+
+After the shape above, end your reply with one fenced `json` block: `{"entries": [...]}`. Give one object per file you read, with `path` (repository-relative), `area`, `summary` (one line), `exports` (the names a change would import), `status` (`verified` or `unverified`) and `mappedBy` set to `frontend-engineer`. Include only files you read. Never include a secret-looking file, and never a value.

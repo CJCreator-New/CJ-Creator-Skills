@@ -112,6 +112,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/ledger.mjs" finish
 | `report.mjs` | writes the operational dashboard (HTML) and the final report (Markdown) |
 | `view.mjs` | the view both renderings read, so they cannot disagree |
 | `fingerprint.mjs` | content fingerprints of journeys' files and of the working tree |
+| `repo-map.mjs` | the shared repo map at `.claude/repo-map/map.json`: `status` reports reusable and stale entries, `write` stores repo-intel's entries. The same file is kept byte-identical in e2e-engineer and frontend-engineer |
 
 ### Model routing
 

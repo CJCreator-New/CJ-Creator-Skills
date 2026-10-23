@@ -69,7 +69,8 @@ Independent agents implement against these contracts. A contract change after im
 
 ## Caching and invalidation
 
-- `cache/repo-index.json` stores the git SHA it was built from and, per entry, the paths it describes.
-- The index is reused only when `git diff --name-only <sha> -- <paths>` is empty for the paths it needs.
+- The repository map is shared by backend-engineer, e2e-engineer and frontend-engineer. It lives at `.claude/repo-map/map.json`, one entry per file, each stamped with the commit it was mapped at.
+- An entry is reused only while no commit after its stamp touched its file, the working tree has no change to it, and the file still exists. `repo-map.mjs status` reports the reusable entries and the stale paths.
+- Without git nothing is cached, and every path is mapped again.
 - The design spec is cached in the checkpoint with the reference's file hash or URL. Re-run design-analyst only when the reference changes.
 - Never reuse a cached finding after the files it describes have changed.

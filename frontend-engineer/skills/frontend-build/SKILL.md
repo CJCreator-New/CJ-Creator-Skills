@@ -59,7 +59,7 @@ Use the routing rules in `classification-and-routing.md`. Do not ask the user fo
 Dispatch these in one message, only the ones the mode needs:
 
 - **design-analyst** (when a design reference exists): returns a structured design spec, with explicit requirements separated from inferred ones.
-- **repo-intel**: returns a task-relevant index of files, components, tokens, API clients, test utilities and commands. Reuse `.claude/frontend-engineer/cache/repo-index.json` when it exists and `git diff --name-only <indexed-sha> -- <relevant paths>` is empty. Otherwise refresh it and record the new SHA.
+- **repo-intel**: returns a task-relevant index of files, components, tokens, API clients, test utilities and commands. Check the shared repo map first with `node "${CLAUDE_PLUGIN_ROOT}/scripts/repo-map.mjs" status <repo root> <relevant paths>`. Dispatch repo-intel only for the paths in `stale` and when `unmapped` is above zero, then store its entries block with `repo-map.mjs write`.
 
 Store both outputs in the checkpoint. Other stages read the checkpoint, not the agents' full transcripts.
 

@@ -23,7 +23,7 @@
       "name": "frontend-engineer",
       "source": "./frontend-engineer",
       "description": "Frontend engineering orchestrator: classifies the task, analyses the design reference, implements in parallel with file ownership, tests, checks the rendered page against the reference, and reports evidence-based status.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "license": "MIT",
       "keywords": ["frontend", "design-to-code", "visual-qa", "testing", "orchestration"]
     },
@@ -31,7 +31,7 @@
       "name": "backend-engineer",
       "source": "./backend-engineer",
       "description": "Backend engineering orchestrator: reconstructs user journeys from the frontend and requirements, finds gaps early, designs contracts and data, implements and integrates the backend with parallel agents in dependency waves, and verifies complete workflows with evidence.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "license": "MIT",
       "keywords": ["backend", "api", "database", "security", "user-flows", "testing", "orchestration"]
     },
@@ -39,7 +39,7 @@
       "name": "e2e-engineer",
       "source": "./e2e-engineer",
       "description": "End-to-end test engineering: discovers the app and its user journeys, plans them behind an approval gate, verifies them through web, mobile web, native Android and iOS, cross-layer UI-to-API-to-database checks, the API and the database, then triages defects, hands them to their owners, retests each fix, and reports an evidence-based release status.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "license": "MIT",
       "keywords": ["e2e", "testing", "mobile", "browser", "api", "rbac", "orchestration"]
     }

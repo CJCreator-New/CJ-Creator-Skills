@@ -87,7 +87,7 @@ For each wave, in one message:
    - the stack (frontend, backend, database),
    - the **commands** the project really runs, keyed by name: `test` (the full suite), `testFocused`, `regression`, `e2e`, `lint`, `typecheck`, `build`, `migrate` (applies and reverts the migrations against a test database). Use the project's own scripts, such as `npm test`. Only a declared command can count as evidence.
    - the capabilities from step 5, and the limitations you already know.
-4. Dispatch **repo-intel** for the frontend and the backend. Record its commands, stack, and any unfinished work. Check its commands against the ones you declared.
+4. Map the frontend and the backend through the shared repo map. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/repo-map.mjs" status <repo root> <frontend and backend paths>`. Use the entries in `reuse` as the map for those paths. Dispatch **repo-intel** only for the paths in `stale` and when `unmapped` is above zero, and only for those paths. When it returns, store its entries block with `node "${CLAUDE_PLUGIN_ROOT}/scripts/repo-map.mjs" write <repo root> <entries file>`. Record its commands, stack, and any unfinished work. Check its commands against the ones you declared.
 5. Probe capabilities and record each as available or unavailable. Never assume one: a test database and the migration command, a runnable backend and frontend, a browser for E2E tests, and each external service by name only.
 6. Choose the mode, then run `ORCH advance discover`.
 
