@@ -55,7 +55,7 @@ orchestrator uses the text you give it and says that it did.
 ## Components
 
 ```
-plugins/repo-orchestrator/
+repo-orchestrator/
 ├── .claude-plugin/plugin.json       manifest
 ├── skills/orchestrate/
 │   ├── SKILL.md                     entry point and stage order
@@ -91,13 +91,14 @@ It fails open on malformed input so it never breaks a session.
 
 To stop a run without finishing it, delete `.claude/orchestrator/phase`.
 
-Keep `.claude/` out of commits. The qa-flow-tester `.gitignore` already covers it.
+Keep `.claude/` out of commits: add it to the project's `.gitignore`. This repository's own `.gitignore` does not list it.
 
 ## Validation
 
 ```
-pnpm test:plugin                               # structure checks + hook tests
-claude plugin validate plugins/repo-orchestrator
+node --test repo-orchestrator/test/*.test.mjs  # hook tests
+node repo-orchestrator/scripts/validate.mjs      # structure checks
+claude plugin validate repo-orchestrator
 claude plugin validate .                       # marketplace manifest
 ```
 
@@ -131,7 +132,7 @@ claude plugin validate .                       # marketplace manifest
 - **A test command is blocked during implementation.** That is the guard working. Finish the stage, or
   remove `.claude/orchestrator/phase` to stop the run.
 - **The skill does not appear.** Run `/plugin` and check that `repo-orchestrator` is enabled. Confirm with
-  `claude plugin validate plugins/repo-orchestrator`.
-- **`pnpm test:plugin` fails on the validator.** The message names the file and the rule. Fix that file.
+  `claude plugin validate repo-orchestrator`.
+- **The validator fails.** The message names the file and the rule. Fix that file.
 - **A run stopped at verification with no output.** Check that the scoped test command exists in the
   repo's `package.json`. The orchestrator records the command it used in the report.

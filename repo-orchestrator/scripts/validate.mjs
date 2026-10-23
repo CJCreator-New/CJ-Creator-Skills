@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Structural checks for the repo-orchestrator plugin and the marketplace that lists it.
-// Run from the repository root: node plugins/repo-orchestrator/scripts/validate.mjs
-// For the official check run: claude plugin validate plugins/repo-orchestrator
+// Run from the repository root: node repo-orchestrator/scripts/validate.mjs
+// For the official check run: claude plugin validate repo-orchestrator
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve, relative } from 'node:path';
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const PLUGIN = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The marketplace is the nearest ancestor folder holding .claude-plugin/marketplace.json,
-// so the plugin works at any depth in a repo (plugins/<name>/ here, <name>/ elsewhere).
+// so the plugin works at any depth in a repo, whether the marketplace is the repo root or a parent folder.
 function findRoot(start) {
   for (let dir = start; ; dir = dirname(dir)) {
     if (existsSync(join(dir, '.claude-plugin/marketplace.json'))) return dir;

@@ -9,7 +9,7 @@
       "name": "forge",
       "source": "./forge",
       "description": "Map, enhance, plan, approve, build with parallel subagents, test, hand off. Ponytail discipline, token accounting, live gamified dashboard. Works in any project.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "license": "MIT",
       "keywords": ["workflow", "subagents", "planning", "token-efficiency", "dashboard"]
     },
@@ -22,7 +22,7 @@
     {
       "name": "frontend-engineer",
       "source": "./frontend-engineer",
-      "description": "Frontend engineering orchestrator: classifies the task, analyses the design reference, implements in parallel with file ownership, tests, checks the rendered page against the reference, and reports evidence-based status.",
+      "description": "Frontend engineering orchestrator: classifies the task, analyses the design reference, implements in parallel with file ownership, tests, checks the rendered page against the reference, and reports evidence-based status. Includes a read-only WCAG 2.2 AA accessibility audit.",
       "version": "0.2.0",
       "license": "MIT",
       "keywords": ["frontend", "design-to-code", "visual-qa", "testing", "orchestration"]
@@ -42,6 +42,14 @@
       "version": "1.1.0",
       "license": "MIT",
       "keywords": ["e2e", "testing", "mobile", "browser", "api", "rbac", "orchestration"]
+    },
+    {
+      "name": "security-audit",
+      "source": "./security-audit",
+      "description": "Read-only security audit: maps the attack surface, runs specialist reviewers for secrets, dependencies, access control, input handling and configuration, and reports only findings with a reachable path. Never edits source.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": ["security", "audit", "secrets", "dependencies", "access-control", "owasp", "read-only"]
     }
   ]
 }

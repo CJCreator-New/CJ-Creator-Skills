@@ -1,7 +1,7 @@
 {
   "name": "frontend-engineer",
   "version": "0.2.0",
-  "description": "Frontend engineering orchestrator: classifies the task, analyses the design reference, implements with file ownership, tests, verifies the rendered page against the reference, and reports evidence-based status.",
+  "description": "Frontend engineering orchestrator: classifies the task, analyses the design reference, implements with file ownership, tests, verifies the rendered page against the reference, and reports evidence-based status. Includes a read-only WCAG 2.2 AA accessibility audit.",
   "author": {
     "name": "CJCreator"
   }

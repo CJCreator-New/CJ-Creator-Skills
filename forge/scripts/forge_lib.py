@@ -14,6 +14,7 @@ import time
 VERSION = "1.1.0"
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from forge_root import run_git, forge_dir, state_path, find_root  # noqa: E402,F401
 
 STEPS = [
     "Project map", "Enhance the prompt", "Plan", "Approval gate", "Execute",
@@ -43,43 +44,6 @@ def now():
 def slugify(s):
     s = re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
     return s[:48] or "feature"
-
-
-def run_git(args, cwd, timeout=20):
-    try:
-        r = subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        return r.returncode, r.stdout
-    except Exception:
-        return 1, ""
-
-
-def forge_dir(root):
-    return os.path.join(root, ".claude", "forge")
-
-
-def state_path(root):
-    return os.path.join(forge_dir(root), "state.json")
-
-
-def find_root(start=None):
-    """Project root that holds .claude/forge/state.json (worktree-aware), else None."""
-    cands = [c for c in (start, os.environ.get("CLAUDE_PROJECT_DIR"), os.getcwd()) if c]
-    for c in cands:
-        d = os.path.abspath(c)
-        while True:
-            if os.path.isfile(state_path(d)):
-                return d
-            p = os.path.dirname(d)
-            if p == d:
-                break
-            d = p
-    for c in cands:
-        rc, out = run_git(["rev-parse", "--git-common-dir"], c)
-        if rc == 0 and out.strip():
-            d = os.path.dirname(os.path.abspath(os.path.join(c, out.strip())))
-            if os.path.isfile(state_path(d)):
-                return d
-    return None
 
 
 def init_root(start=None):
