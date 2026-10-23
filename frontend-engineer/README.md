@@ -79,6 +79,7 @@ frontend-engineer/
 │   ├── telemetry.mjs        stage timings, reported tokens, defects, iterations, summary
 │   ├── contrast.mjs         WCAG contrast ratio for two colours, with the normal, large and non-text thresholds
 │   ├── axe-scan.mjs         axe-core, focus order and 320px reflow on a URL, via the project's Playwright
+│   ├── repo-map.mjs         shared repo map at .claude/repo-map/map.json: status and write (copy of backend-engineer's)
 │   └── validate.mjs         structure checks for the plugin and its marketplace entry
 ├── examples/config.example.json
 └── test/                    guard, gates, telemetry, accessibility and structure tests
