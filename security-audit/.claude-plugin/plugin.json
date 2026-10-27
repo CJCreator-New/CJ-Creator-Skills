@@ -1,0 +1,8 @@
+{
+  "name": "security-audit",
+  "version": "0.1.0",
+  "description": "Read-only security audit of a repository or change set: maps the attack surface, runs specialist reviewers for secrets, dependencies, access control, input handling and configuration, and reports only findings with a reachable path.",
+  "author": {
+    "name": "CJCreator"
+  }
+}

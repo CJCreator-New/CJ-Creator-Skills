@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy to .claude/frontend-engineer/config.json in the project. Every field is optional. Missing commands are detected from package.json; missing browser or design inputs are reported as unavailable.",
+  "devServer": {
+    "command": "npm run dev",
+    "url": "http://127.0.0.1:5173"
+  },
+  "commands": {
+    "format": "npm run format:check",
+    "lint": "npm run lint",
+    "typecheck": "npm run typecheck",
+    "build": "npm run build",
+    "test": "npm test",
+    "testFocused": "npx vitest run {files}"
+  },
+  "viewports": [
+    { "name": "desktop", "width": 1440, "height": 900 },
+    { "name": "mobile", "width": 390, "height": 844 }
+  ],
+  "maxVisualIterations": 3,
+  "design": {
+    "screenshot": "docs/design/dashboard.png",
+    "figma": null,
+    "route": "/dashboard"
+  }
+}

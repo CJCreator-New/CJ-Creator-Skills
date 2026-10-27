@@ -63,8 +63,10 @@ class T(unittest.TestCase):
     def test_toasts(self):
         a, b = make_state(), make_state()
         b["tickets"]["P1-T2"]["status"] = "done"
-        # relay-race wording (legs timed before this version show --:--)
-        self.assertEqual([x[0] for x in tui.diff_toasts(a, b)][:1], ["P1-T2 baton passed after --:--  +10 XP"])
+        # The relay-race toast ("baton passed after <time>"); the leg time depends on the clock, so match the prefix.
+        toasts = [x[0] for x in tui.diff_toasts(a, b)]
+        self.assertTrue(toasts and toasts[0].startswith("P1-T2 baton passed after "), toasts)
+        self.assertTrue(toasts[0].endswith("  +10 XP"), toasts)
 
     @unittest.skipUnless(hasattr(os, "fork"), "live pty test needs a POSIX host (Windows: run watch by hand)")
     def test_watch_in_pty(self):
@@ -92,7 +94,7 @@ class T(unittest.TestCase):
         # live update: finish a ticket and watch the toast + new state appear
         st["tickets"]["P1-T2"]["status"] = "done"; F.save(d, st)
         mark = len(buf); pump(1.5)
-        self.assertIn(b"baton passed", buf[mark:])
+        self.assertIn(b"P1-T2 baton passed after", buf[mark:])
         os.write(fd, b"q"); pump(1.0)
         _, status = os.waitpid(pid, 0)
         self.assertEqual(os.WEXITSTATUS(status), 0)

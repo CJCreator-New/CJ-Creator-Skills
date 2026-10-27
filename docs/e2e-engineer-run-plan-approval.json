@@ -1,0 +1,53 @@
+{
+  "plan": "e2e-engineer/fixtures/planted-app/plan.json",
+  "note": "Each approval covers only the digest it names. A later change to the plan needs a new approval.",
+  "approvals": [
+    {
+      "planDigest": "1565dd64f009b00aac2ee0c3ca1435abc24a327c5194d4dc1de0ece5d5aefe76",
+      "planCommit": "a60a3ee",
+      "approvedBy": "csaravana.csk@gmail.com",
+      "approvedAt": "2026-10-22",
+      "approvedVia": "user approval in the session, after v0.4",
+      "covers": "The revised fixture test plan at digest 1565dd64 (v0.4): REQ-UI-001 restated as a spec, TC-UI-01 to TC-UI-09 with steps, and the new TC-UI-09 golden path."
+    },
+    {
+      "planDigest": "41c9e839a1cf260a49a59ed2b61394aed57e3576e36e295b5b6327f5ad7c8239",
+      "planCommit": "c34b004",
+      "approvedBy": "csaravana.csk@gmail.com",
+      "approvedAt": "2026-10-22",
+      "approvedVia": "user approval in the session, after v0.5 (\"1 approve\")",
+      "covers": "The fixture test plan at digest 41c9e839 (v0.5): TC-SEC-01 static checks, and the native cases TC-AND-01 and TC-IOS-01."
+    },
+    {
+      "planDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
+      "planCommit": "ce9c14f",
+      "approvedBy": "csaravana.csk@gmail.com",
+      "approvedAt": "2026-10-22",
+      "approvedVia": "user approval in the session, after v0.6 (\"approve 529f3e90\")",
+      "covers": "The fixture test plan at digest 529f3e90 (v0.6): the native cases out of scope, REQ-UI-001 and REQ-APR-004 confirmed, REQ-UI-004 at 24 by 24 CSS pixels and confirmed."
+    },
+    {
+      "planDigest": "67892a13b426a2a1d2de15c02a81bc156ac441171e8d1b523b707bffab23a7ba",
+      "planCommit": "660c387",
+      "approvedBy": "csaravana.csk@gmail.com",
+      "approvedAt": "2026-10-22",
+      "approvedVia": "user approval in the session, after v1.0 (\"approve 67892a13\")",
+      "covers": "The fixture test plan at digest 67892a13 (v1.0): v1.0 adds the cross-layer test cases TC-E2E-01 (a manager approval of an order over 1000 is refused at the UI request, in the database and in the API) and TC-E2E-02 (a manager approval through the UI is stored and served). Nothing else changed."
+    }
+  ],
+  "notCovered": [
+    "Any run against a target repository. Each target run needs its own ledger approval, recorded with ledger.mjs approve against that run's frozen digest."
+  ],
+  "decisions": {
+    "recordedAt": "2026-10-22",
+    "by": "csaravana.csk@gmail.com",
+    "applied": [
+      "TC-AND-01 and TC-IOS-01 are out of scope for this release (decision 2b; D6 stays open).",
+      "REQ-UI-001 (Export downloads the visible orders as JSON) is confirmed.",
+      "REQ-APR-004 (a staff member cannot approve an order) is confirmed.",
+      "REQ-UI-004 is set to 24 by 24 CSS pixels (WCAG 2.2 SC 2.5.8, level AA) and confirmed; TC-UI-04 checks 24."
+    ],
+    "resultingDigest": "529f3e90930971e3b5655ca0f0959517c9cf2521d147d8ee263d27263ea7ede3",
+    "status": "approved with the plan at digest 529f3e90"
+  }
+}

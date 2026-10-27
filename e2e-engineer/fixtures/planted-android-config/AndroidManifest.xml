@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Planted defect 13. A fixture for static checks only, not a buildable app. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.orders">
+    <application
+        android:label="Orders"
+        android:debuggable="true"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true">
+        <activity android:name=".MainActivity" android:exported="true" />
+    </application>
+</manifest>
