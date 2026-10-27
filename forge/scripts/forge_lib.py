@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from forge_root import run_git, forge_dir, state_path, find_root  # noqa: E402,F401

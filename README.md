@@ -36,7 +36,7 @@ Manual install, Claude Code only:
 ```
 
 Then, in any project: `/forge-init` once (optional, `/forge` does it), then `/forge <feature request>`.
-Plugin commands may show namespaced as `/forge:forge-approve` etc. Forge needs Python 3.8+ available as `python`.
+Plugin commands may show namespaced as `/forge:forge-approve` etc. Forge needs Python 3.8+. The hooks try `python3`, then `python`, then `py`, so whichever one your system has is used. If none is found the hooks do nothing and Forge still works.
 
 ## Commands
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """TUI tests: layouts at several widths, ASCII mode, statusline, and a live `watch` in a real pty."""
-import json, os, pty, re, select, subprocess, sys, tempfile, time, unittest
+import json, os, re, select, subprocess, sys, tempfile, time, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.path.join(os.path.dirname(HERE), "forge", "scripts")
@@ -68,14 +68,16 @@ class T(unittest.TestCase):
         self.assertTrue(toasts and toasts[0].startswith("P1-T2 baton passed after "), toasts)
         self.assertTrue(toasts[0].endswith("  +10 XP"), toasts)
 
+    @unittest.skipUnless(hasattr(os, "fork"), "live pty test needs a POSIX host (Windows: run watch by hand)")
     def test_watch_in_pty(self):
+        import pty
         d = tempfile.mkdtemp(); os.makedirs(os.path.join(d, ".claude/forge"))
         st = make_state(); F.save(d, st)
         pid, fd = pty.fork()
         if pid == 0:
             os.chdir(d)
             os.environ.update(TERM="xterm-256color", PYTHONIOENCODING="utf-8", LANG="C.UTF-8")
-            os.execvp("python", ["python", os.path.join(SCR, "forge_cli.py"), "watch"])
+            os.execv(sys.executable, [sys.executable, os.path.join(SCR, "forge_cli.py"), "watch"])
         import fcntl, struct, termios
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 130, 0, 0))
         buf = b""
