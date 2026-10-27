@@ -549,8 +549,10 @@ def cmd_export(a):
 
 
 def cmd_claude_md(a):
+    # CLAUDE.md is read by Claude Code; AGENTS.md is read by Codex, Cursor, Copilot, OpenCode and others.
     root = root_or_die()
-    p = os.path.join(root, "CLAUDE.md")
+    name = a.file
+    p = os.path.join(root, name)
     old = open(p, encoding="utf-8").read() if os.path.isfile(p) else ""
     sec = open(os.path.join(F.PLUGIN_ROOT, "templates", "claude-md-section.md"), encoding="utf-8").read().strip() + "\n"
     if MARK_S in old and MARK_E in old:
@@ -560,10 +562,10 @@ def cmd_claude_md(a):
     if a.action == "check":
         print("present" if MARK_S in old else "missing")
     elif a.action == "show":
-        print(F.unified_diff(old, new, "CLAUDE.md") or "(no change)")
+        print(F.unified_diff(old, new, name) or "(no change)")
     else:
         open(p, "w", encoding="utf-8").write(new)
-        print("CLAUDE.md updated")
+        print("%s updated" % name)
 
 
 def main(argv=None):
@@ -610,7 +612,8 @@ def main(argv=None):
     add("inbox", cmd_inbox, (["--peek"], {"action": "store_true"}))
     add("shortcuts", cmd_shortcuts)
     add("export", cmd_export)
-    add("claude-md", cmd_claude_md, (["action"], {"choices": ["check", "show", "apply"]}))
+    add("claude-md", cmd_claude_md, (["action"], {"choices": ["check", "show", "apply"]}),
+        (["--file"], {"choices": ["CLAUDE.md", "AGENTS.md"], "default": "CLAUDE.md"}))
     a = ap.parse_args(argv)
     a.fn(a)
 

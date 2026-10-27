@@ -17,13 +17,13 @@ def sh(*a, inp=None, cwd=None):
 
 
 def F(*a):
-    rc, o, e = sh("python", ".claude/forge/forge.py", *a)
+    rc, o, e = sh(sys.executable, ".claude/forge/forge.py", *a)
     assert rc == 0, (a, o, e)
     return o
 
 
 def hook(ev, data):
-    rc, o, e = sh("python", os.path.join(SCR, "hook.py"), ev, inp=json.dumps(data))
+    rc, o, e = sh(sys.executable, os.path.join(SCR, "hook.py"), ev, inp=json.dumps(data))
     assert rc == 0, e
     return o, e
 
@@ -45,7 +45,7 @@ sh("git", "add", "src"); sh("git", "commit", "-qm", "init")
 print("workdir:", work)
 
 # --- init (as /forge-init does) + launcher
-rc, o, e = sh("python", os.path.join(SCR, "forge_cli.py"), "init"); assert rc == 0, e
+rc, o, e = sh(sys.executable, os.path.join(SCR, "forge_cli.py"), "init"); assert rc == 0, e
 check(os.path.isfile(os.path.join(work, ".claude/forge/forge.py")), "init wrote launcher")
 F("new-run", "Shout greeting", "--request", "make greet shout")
 print(F("step", "1").strip())

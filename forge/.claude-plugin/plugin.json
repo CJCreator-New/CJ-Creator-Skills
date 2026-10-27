@@ -1,7 +1,9 @@
 {
   "name": "forge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Token-efficient feature workflow: project map, prompt enhancement, phased tickets with token estimates, approval gate, parallel subagents, end-of-run testing, dev handoff, live dashboard.",
+  "author": { "name": "CJCreator-New", "url": "https://github.com/CJCreator-New" },
+  "repository": "https://github.com/CJCreator-New/CJ-Creator-Skills",
   "license": "MIT",
   "keywords": ["workflow", "subagents", "planning", "token-efficiency", "dashboard"]
 }

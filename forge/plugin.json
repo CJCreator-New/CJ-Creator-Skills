@@ -1,0 +1,7 @@
+{
+  "name": "forge",
+  "version": "1.2.0",
+  "description": "Token-efficient feature workflow: project map, prompt enhancement, phased tickets with token estimates, approval gate, end-of-run testing, dev handoff, live dashboard. Skill at skills/forge/SKILL.md.",
+  "license": "MIT",
+  "keywords": ["workflow", "subagents", "planning", "token-efficiency", "dashboard"]
+}
